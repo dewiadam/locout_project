@@ -96,7 +96,7 @@ def to_radians(coords):
 
 def detect_anomaly(file, radius_meter):
     df = pd.read_excel(file, engine='openpyxl')
-    coords = df[['Latitude', 'Longitude']].values
+    coords = df[['LATITUDE', 'LONGITUDE']].values
 
     kms_per_radian = 6371.0088
     epsilon = (radius_meter / 1000) / kms_per_radian
@@ -142,8 +142,8 @@ if uploaded_file and proses:
             result_df.groupby('cluster')
             .agg(
                 jumlah_titik=('cluster', 'size'),
-                lat_rata2=('Latitude', 'mean'),
-                lon_rata2=('Longitude', 'mean')
+                lat_rata2=('LATITUDE', 'mean'),
+                lon_rata2=('LONGITUDE', 'mean')
             )
             .reset_index()
         )
@@ -168,5 +168,6 @@ if uploaded_file and proses:
         file_name=f"hasil_deteksi_anomali_outlet_{radius_label}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
