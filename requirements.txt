@@ -3,5 +3,6 @@ pandas
 numpy
 scikit-learn
 openpyxl
-ExcelWriter
+xlsxwriter
+
 
