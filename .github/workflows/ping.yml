@@ -3,7 +3,7 @@ name: Keep Streamlit App Awake
 on:
   schedule:
     - cron: "0 */6 * * *"   # jalan tiap 6 jam
-  workflow_dispatch:         # bisa dijalankan manual dari tab Actions
+  workflow_dispatch:         # bisa dijalankan manual dari tab Action
 
 jobs:
   ping:
