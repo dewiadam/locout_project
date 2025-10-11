@@ -39,7 +39,7 @@ div[data-testid="stSidebarNav"] li.active {
 
 /* Ubah lebar sidebar */
 section[data-testid="stSidebar"] {
-    min-width: 300px !important;   /* default sekitar 250px */
+    min-width: 270px !important;   /* default sekitar 250px */
     max-width: 320px !important;
 }
 
@@ -310,3 +310,4 @@ if "Anomali" in menu:
     page_anomali()
 else:
     page_coverage()
+
