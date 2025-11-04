@@ -310,4 +310,3 @@ if "Anomali" in menu:
     page_anomali()
 else:
     page_coverage()
-
