@@ -311,17 +311,6 @@ def page_mapping_rute():
     header("Optimasi Rute Kunjungan SF)")
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx"])
-
-    st.markdown("""
-        <div style="
-            background-color: #f2f2f2;
-            padding: 20px 25px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        ">
-            <h4 style="margin-top:0; color:#333;">🏢 Lokasi Kantor</h4>
-        </div>
-        """, unsafe_allow_html=True)
     
     with st.expander("🏢 Lokasi Kantor", expanded=True):
         col1, col2 = st.columns(2)
@@ -410,3 +399,4 @@ elif "Coverage" in menu:
     page_coverage()
 else:
     page_mapping_rute()
+
