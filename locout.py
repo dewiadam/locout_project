@@ -308,7 +308,7 @@ def page_coverage():
 # MENU 3 - MAPPING RUTE PJP
 # =====================================
 def page_mapping_rute():
-    header("Optimasi Rute Kunjungan SF)")
+    header("Optimasi Rute Kunjungan SF")
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx"])
     
@@ -399,4 +399,5 @@ elif "Coverage" in menu:
     page_coverage()
 else:
     page_mapping_rute()
+
 
