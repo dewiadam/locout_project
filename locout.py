@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN
+from geopy.distance import geodesic
 from io import BytesIO
+from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 # =====================================
 # STYLE UMUM (HEADER, SIDEBAR, BUTTON)
@@ -124,7 +126,7 @@ st.sidebar.markdown("""
 
 menu = st.sidebar.radio(
     "",
-    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet"],
+    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Tools Mapping Rute PJP"],
     label_visibility="collapsed"
 )
 
@@ -302,11 +304,109 @@ def page_coverage():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
+# =====================================
+# MENU 3 - MAPPING RUTE PJP
+# =====================================
+def page_mapping_rute():
+    header("Optimasi Rute Kunjungan SF)")
+
+    uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx"])
+
+    st.markdown("""
+        <div style="
+            background-color: #f2f2f2;
+            padding: 20px 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        ">
+            <h4 style="margin-top:0; color:#333;">🏢 Lokasi Kantor</h4>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with st.expander("🏢 Lokasi Kantor", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            kantor_lat = st.number_input("Latitude Kantor", value=-6.200000, format="%.6f")
+        with col2:
+            kantor_lon = st.number_input("Longitude Kantor", value=106.816666, format="%.6f")
+
+    proses = st.button("🚀 Proses Data")
+
+    def create_distance_matrix(coords):
+        n = len(coords); matrix = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                if i != j: matrix[i][j] = geodesic(coords[i], coords[j]).km
+        return matrix
+
+    def solve_tsp(distance_matrix):
+        n = len(distance_matrix)
+        manager = pywrapcp.RoutingIndexManager(n, 1, 0)
+        routing = pywrapcp.RoutingModel(manager)
+        def distance_callback(from_index, to_index):
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            return int(distance_matrix[from_node][to_node] * 1000)
+        transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+        search_params = pywrapcp.DefaultRoutingSearchParameters()
+        search_params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        search_params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        search_params.time_limit.seconds = 5
+        solution = routing.SolveWithParameters(search_params)
+        if not solution:
+            return list(range(n))
+        index = routing.Start(0); route = []
+        while not routing.IsEnd(index):
+            route.append(manager.IndexToNode(index))
+            index = solution.Value(routing.NextVar(index))
+        return route
+
+    if proses:
+        if uploaded_file is None:
+            st.warning("⚠️ Harap upload file outlet terlebih dahulu.")
+        else:
+            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+            required_cols = {'id_outlet', 'lat_outlet', 'lon_outlet', 'nama_sf'}
+            if not required_cols.issubset(df.columns):
+                st.error(f"❌ File harus memiliki kolom: {', '.join(required_cols)}")
+                return
+            kantor_coord = (kantor_lat, kantor_lon)
+            hasil_list = []; sf_list = df["nama_sf"].unique()
+            progress = st.progress(0)
+            for i, sf in enumerate(sf_list):
+                df_sf = df[df["nama_sf"] == sf].reset_index(drop=True)
+                coords = [kantor_coord] + list(zip(df_sf["lat_outlet"], df_sf["lon_outlet"]))
+                dist_matrix = create_distance_matrix(coords)
+                route_idx = solve_tsp(dist_matrix)
+                route_outlet = [idx - 1 for idx in route_idx if idx != 0]
+                route_df = df_sf.iloc[route_outlet].copy()
+                route_df["urutan"] = np.arange(1, len(route_df) + 1)
+                route_df["nama_sf"] = sf
+                hasil_list.append(route_df)
+                progress.progress((i + 1) / len(sf_list))
+            df_hasil = pd.concat(hasil_list, ignore_index=True)
+            df_hasil["urutan_1_15"] = ((df_hasil["urutan"] - 1) % 15) + 1
+            st.dataframe(df_hasil, use_container_width=True)
+
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_hasil.to_excel(writer, index=False, sheet_name='PJP_TSP_Optimized')
+            st.download_button(
+                "📥 Download Hasil (Excel)",
+                data=output.getvalue(),
+                file_name="pjp_tsp_optimized.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            st.success("✅ Rute optimal berhasil dibuat!")
+
 
 # =====================================
 # HALAMAN UTAMA SESUAI MENU
 # =====================================
 if "Anomali" in menu:
     page_anomali()
-else:
+elif "Coverage" in menu:
     page_coverage()
+else:
+    page_mapping_rute()
