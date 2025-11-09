@@ -232,6 +232,14 @@ def page_coverage():
 
     def haversine(lat1, lon1, lat2, lon2):
         R = 6371
+
+        try:
+        # pastikan semua nilai bisa diubah ke float
+            lat1, lon1, lat2, lon2 = map(float, [lat1, lon1, lat2, lon2])
+        except (ValueError, TypeError):
+            # jika ada nilai aneh, kembalikan NaN supaya tidak error
+            return np.nan
+        
         lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
         dlat = lat2 - lat1
         dlon = lon2 - lon1
@@ -399,6 +407,7 @@ elif "Coverage" in menu:
     page_coverage()
 else:
     page_mapping_rute()
+
 
 
 
