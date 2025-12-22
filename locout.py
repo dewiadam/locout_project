@@ -5,6 +5,9 @@ from sklearn.cluster import DBSCAN
 from geopy.distance import geodesic
 from io import BytesIO
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+from math import radians, cos, sin, asin, sqrt
+import folium
+from streamlit_folium import st_folium
 
 # =====================================
 # STYLE UMUM (HEADER, SIDEBAR, BUTTON)
@@ -126,7 +129,7 @@ st.sidebar.markdown("""
 
 menu = st.sidebar.radio(
     "",
-    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Tools Mapping Rute PJP"],
+    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Tools Mapping PJP", "🗺️ Optimasi Rute PJP"],
     label_visibility="collapsed"
 )
 
@@ -313,9 +316,189 @@ def page_coverage():
             )
 
 # =====================================
-# MENU 3 - MAPPING RUTE PJP
+# MENU 3 - MAPPING PJP
 # =====================================
-def page_mapping_rute():
+
+def page_mapping():
+    header("Mapping PJP")
+
+
+
+st.set_page_config(page_title="Sales Territory Dominance", layout="wide")
+
+# ================= UTILITIES =================
+def haversine(lon1, lat1, lon2, lat2):
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+    return 6371 * 2 * asin(sqrt(a))  # KM
+
+# ================= APP =================
+st.title("🗺️ Sales Territory Dominance Mapping")
+
+uploaded_file = st.file_uploader("📂 Upload Data Outlet (XLSX)", type=["xlsx"])
+
+if uploaded_file is None:
+    st.info("Silakan upload file Excel terlebih dahulu.")
+    st.stop()
+
+# ================= LOAD DATA =================
+df = pd.read_excel(uploaded_file)
+
+required_cols = [
+    "id_outlet", "nama_outlet",
+    "lon_outlet", "lat_outlet",
+    "nama_sf"
+]
+
+missing = set(required_cols) - set(df.columns)
+if missing:
+    st.error(f"Kolom berikut tidak ditemukan: {missing}")
+    st.stop()
+
+st.success(f"Total Outlet: {len(df)}")
+st.dataframe(df.head())
+
+# ================= STEP 1: CENTROID AWAL ================= centroid Titik tengah (rata-rata koordinat) outlet milik setiap sales, Menjadi anchor awal wilayah dominan masing-masing sales
+centroid_sf = (
+    df.groupby("nama_sf")[["lat_outlet", "lon_outlet"]]
+    .mean()
+    .reset_index()
+    .rename(columns={
+        "lat_outlet": "centroid_lat",
+        "lon_outlet": "centroid_lon"
+    })
+)
+
+# ================= STEP 2: ASSIGN DOMINANT =================
+def assign_sf(row):
+    min_dist = 1e9
+    selected_sf = None
+    for _, c in centroid_sf.iterrows():
+        dist = haversine(
+            row.lon_outlet, row.lat_outlet,
+            c.centroid_lon, c.centroid_lat
+        )
+        if dist < min_dist:
+            min_dist = dist
+            selected_sf = c.nama_sf
+    return selected_sf
+
+df["sf_dominan"] = df.apply(assign_sf, axis=1)
+
+# ================= STEP 3: REBALANCING =================
+MIN_OUTLET = 75
+MAX_DISTANCE_KM = 5
+
+summary = df.groupby("sf_dominan").size().to_dict()
+
+centroid_dominan = (
+    df.groupby("sf_dominan")[["lat_outlet", "lon_outlet"]]
+    .mean()
+    .reset_index()
+    .rename(columns={
+        "lat_outlet": "centroid_lat",
+        "lon_outlet": "centroid_lon"
+    })
+)
+
+def dist_to_centroid(row, centroid):
+    return haversine(
+        row.lon_outlet, row.lat_outlet,
+        centroid.centroid_lon, centroid.centroid_lat
+    )
+
+for sf_target in summary:
+    while summary[sf_target] < MIN_OUTLET:
+
+        centroid_target = centroid_dominan[
+            centroid_dominan.sf_dominan == sf_target
+        ].iloc[0]
+
+        candidates = df[df.sf_dominan != sf_target].copy()
+        candidates["dist"] = candidates.apply(
+            lambda r: dist_to_centroid(r, centroid_target), axis=1
+        )
+
+        candidates = candidates[candidates.dist <= MAX_DISTANCE_KM]
+        if candidates.empty:
+            break
+
+        candidates = candidates.sort_values("dist")
+
+        moved = False
+        for idx, row in candidates.iterrows():
+            sf_donor = row.sf_dominan
+            if summary[sf_donor] > MIN_OUTLET:
+                df.at[idx, "sf_dominan"] = sf_target
+                summary[sf_target] += 1
+                summary[sf_donor] -= 1
+                moved = True
+                break
+
+        if not moved:
+            break
+
+# ================= SUMMARY =================
+st.subheader("📊 Summary Outlet per Sales (Final)")
+summary_df = (
+    df.groupby("sf_dominan")
+    .size()
+    .reset_index(name="total_outlet")
+    .sort_values("total_outlet", ascending=False)
+)
+st.dataframe(summary_df)
+
+# ================= MAP =================
+st.subheader("🗺️ Peta Territory Final")
+
+map_center = [df.lat_outlet.mean(), df.lon_outlet.mean()]
+m = folium.Map(location=map_center, zoom_start=11)
+
+colors = [
+    "red","blue","green","purple","orange",
+    "darkred","cadetblue","darkgreen","pink",
+    "black","gray"
+]
+
+color_map = dict(
+    zip(df.sf_dominan.unique(), colors * 10)
+)
+
+for _, r in df.iterrows():
+    folium.CircleMarker(
+        location=[r.lat_outlet, r.lon_outlet],
+        radius=4,
+        color=color_map[r.sf_dominan],
+        fill=True,
+        fill_opacity=0.8,
+        popup=f"""
+        <b>{r.nama_outlet}</b><br>
+        Sales: {r.sf_dominan}
+        """
+    ).add_to(m)
+
+st_folium(m, width=1200, height=600)
+
+# ================= DOWNLOAD =================
+st.subheader("⬇️ Download Hasil")
+
+output = BytesIO()
+df.to_excel(output, index=False)
+
+st.download_button(
+    "Download Excel Hasil Territory Final",
+    data=output.getvalue(),
+    file_name="hasil_sales_territory_final.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+
+# =====================================
+# MENU 4 - OPTIMASI RUTE PJP
+# =====================================
+def page_rute():
     header("Optimasi Rute Kunjungan SF")
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx"])
@@ -405,8 +588,11 @@ if "Anomali" in menu:
     page_anomali()
 elif "Coverage" in menu:
     page_coverage()
+elif "Mapping" in menu:
+    page_mapping()
 else:
-    page_mapping_rute()
+    page_rute()
+
 
 
 
