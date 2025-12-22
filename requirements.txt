@@ -6,3 +6,5 @@ openpyxl
 xlsxwriter
 geopy
 ortools
+folium
+streamlit-folium
