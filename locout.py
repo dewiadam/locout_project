@@ -497,10 +497,6 @@ def page_mapping():
 def page_rute():
     header("Optimasi Rute Kunjungan SF")
     
-    def distance_to_kantor(lat, lon, kantor_coord):
-    return geodesic((lat, lon), kantor_coord).km
-
-
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx"])
     
     with st.expander("🏢 Lokasi Kantor", expanded=True):
@@ -515,8 +511,10 @@ def page_rute():
     ["Terdekat dari Kantor", "Terjauh dari Kantor"]
     )
 
-
     proses = st.button("🚀 Proses Data")
+
+    def distance_to_kantor(lat, lon, kantor_coord):
+        return geodesic((lat, lon), kantor_coord).km
 
     def create_distance_matrix(coords):
         n = len(coords); matrix = np.zeros((n, n))
@@ -632,6 +630,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
