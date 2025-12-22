@@ -129,7 +129,7 @@ st.sidebar.markdown("""
 
 menu = st.sidebar.radio(
     "",
-    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Tools Mapping PJP", "🗺️ Optimasi Rute PJP"],
+    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Mapping PJP", "🗺️ Optimasi Rute PJP"],
     label_visibility="collapsed"
 )
 
@@ -588,6 +588,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
