@@ -496,6 +496,10 @@ def page_mapping():
 # =====================================
 def page_rute():
     header("Optimasi Rute Kunjungan SF")
+    
+    def distance_to_kantor(lat, lon, kantor_coord):
+    return geodesic((lat, lon), kantor_coord).km
+
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx"])
     
@@ -505,6 +509,12 @@ def page_rute():
             kantor_lat = st.number_input("Latitude Kantor", value=-6.200000, format="%.6f")
         with col2:
             kantor_lon = st.number_input("Longitude Kantor", value=106.816666, format="%.6f")
+
+    urutan_rute = st.radio(
+    "🔁 Urutan Awal Kunjungan",
+    ["Terdekat dari Kantor", "Terjauh dari Kantor"]
+    )
+
 
     proses = st.button("🚀 Proses Data")
 
@@ -539,42 +549,76 @@ def page_rute():
         return route
 
     if proses:
-        if uploaded_file is None:
-            st.warning("⚠️ Harap upload file outlet terlebih dahulu.")
-        else:
-            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-            required_cols = {'id_outlet', 'lat_outlet', 'lon_outlet', 'nama_sf'}
-            if not required_cols.issubset(df.columns):
-                st.error(f"❌ File harus memiliki kolom: {', '.join(required_cols)}")
-                return
-            kantor_coord = (kantor_lat, kantor_lon)
-            hasil_list = []; sf_list = df["nama_sf"].unique()
-            progress = st.progress(0)
-            for i, sf in enumerate(sf_list):
-                df_sf = df[df["nama_sf"] == sf].reset_index(drop=True)
-                coords = [kantor_coord] + list(zip(df_sf["lat_outlet"], df_sf["lon_outlet"]))
-                dist_matrix = create_distance_matrix(coords)
-                route_idx = solve_tsp(dist_matrix)
-                route_outlet = [idx - 1 for idx in route_idx if idx != 0]
-                route_df = df_sf.iloc[route_outlet].copy()
-                route_df["urutan"] = np.arange(1, len(route_df) + 1)
-                route_df["nama_sf"] = sf
-                hasil_list.append(route_df)
-                progress.progress((i + 1) / len(sf_list))
-            df_hasil = pd.concat(hasil_list, ignore_index=True)
-            df_hasil["urutan_1_15"] = ((df_hasil["urutan"] - 1) % 15) + 1
-            st.dataframe(df_hasil, use_container_width=True)
+    if uploaded_file is None:
+        st.warning("⚠️ Harap upload file outlet terlebih dahulu.")
+    else:
+        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        required_cols = {'id_outlet', 'lat_outlet', 'lon_outlet', 'nama_sf'}
+        if not required_cols.issubset(df.columns):
+            st.error(f"❌ File harus memiliki kolom: {', '.join(required_cols)}")
+            return
 
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_hasil.to_excel(writer, index=False, sheet_name='PJP_TSP_Optimized')
-            st.download_button(
-                "📥 Download Hasil (Excel)",
-                data=output.getvalue(),
-                file_name="pjp_tsp_optimized.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        kantor_coord = (kantor_lat, kantor_lon)
+        hasil_list = []
+        sf_list = df["nama_sf"].unique()
+        progress = st.progress(0)
+
+        for i, sf in enumerate(sf_list):
+            df_sf = df[df["nama_sf"] == sf].copy()
+
+            # ===============================
+            # HITUNG JARAK KE KANTOR
+            # ===============================
+            df_sf["dist_kantor"] = df_sf.apply(
+                lambda r: distance_to_kantor(
+                    r.lat_outlet, r.lon_outlet, kantor_coord
+                ),
+                axis=1
             )
-            st.success("✅ Rute optimal berhasil dibuat!")
+
+            # ===============================
+            # SORT SESUAI PILIHAN USER
+            # ===============================
+            ascending = True if urutan_rute == "Terdekat dari Kantor" else False
+            df_sf = df_sf.sort_values("dist_kantor", ascending=ascending).reset_index(drop=True)
+
+            # ===============================
+            # BUILD COORDINATE LIST (kantor index 0)
+            # ===============================
+            coords = [kantor_coord] + list(zip(df_sf["lat_outlet"], df_sf["lon_outlet"]))
+
+            dist_matrix = create_distance_matrix(coords)
+            route_idx = solve_tsp(dist_matrix)
+
+            # ===============================
+            # MAP HASIL TSP KE OUTLET
+            # ===============================
+            route_outlet = [idx - 1 for idx in route_idx if idx != 0]
+            route_df = df_sf.iloc[route_outlet].copy()
+            route_df["urutan"] = np.arange(1, len(route_df) + 1)
+            route_df["nama_sf"] = sf
+
+            hasil_list.append(route_df)
+            progress.progress((i + 1) / len(sf_list))
+
+        df_hasil = pd.concat(hasil_list, ignore_index=True)
+        df_hasil["urutan_1_15"] = ((df_hasil["urutan"] - 1) % 15) + 1
+
+        st.dataframe(df_hasil, use_container_width=True)
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_hasil.to_excel(writer, index=False, sheet_name='PJP_TSP_Optimized')
+
+        st.download_button(
+            "📥 Download Hasil (Excel)",
+            data=output.getvalue(),
+            file_name="pjp_tsp_optimized.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        st.success("✅ Rute optimal berhasil dibuat!")
+
 
 
 # =====================================
@@ -588,6 +632,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
