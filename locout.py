@@ -8,6 +8,11 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 from math import radians, cos, sin, asin, sqrt
 import folium
 from streamlit_folium import st_folium
+from k_means_constrained import KMeansConstrained
+import io
+import plotly.express as px
+import math
+from scipy.optimize import linear_sum_assignment # Library tambahan untuk pemetaan unik
 
 # =====================================
 # STYLE UMUM (HEADER, SIDEBAR, BUTTON)
@@ -315,181 +320,110 @@ def page_coverage():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-# =====================================
-# MENU 3 - MAPPING PJP
-# =====================================
 
+# =====================================
+# MENU 3 - MAPPING PJP (OPTIMIZED)
+# =====================================
 def page_mapping():
     header("Mapping PJP")
+    
+    # 1. Upload File
+    uploaded_file = st.file_uploader("Upload Dataset Excel (id_outlet, nama_outlet, lon_outlet, lat_outlet, nama_sf)", type=["xlsx"])
 
-    # ================= UTILITIES =================
-    def haversine(lon1, lat1, lon2, lat2):
-        lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
-        return 6371 * 2 * asin(sqrt(a))  # KM
-    
-    # ================= APP =================
-    st.title("🗺️ Sales Territory Dominance Mapping")
-    
-    uploaded_file = st.file_uploader("📂 Upload Data Outlet (XLSX)", type=["xlsx"])
-    
-    if uploaded_file is None:
-        st.info("Silakan upload file Excel terlebih dahulu.")
-        st.stop()
-    
-    # ================= LOAD DATA =================
-    df = pd.read_excel(uploaded_file)
-    
-    required_cols = [
-        "id_outlet", "nama_outlet",
-        "lon_outlet", "lat_outlet",
-        "nama_sf"
-    ]
-    
-    missing = set(required_cols) - set(df.columns)
-    if missing:
-        st.error(f"Kolom berikut tidak ditemukan: {missing}")
-        st.stop()
-    
-    st.success(f"Total Outlet: {len(df)}")
-    st.dataframe(df.head())
-    
-    # ================= STEP 1: CENTROID AWAL ================= centroid Titik tengah (rata-rata koordinat) outlet milik setiap sales, Menjadi anchor awal wilayah dominan masing-masing sales
-    centroid_sf = (
-        df.groupby("nama_sf")[["lat_outlet", "lon_outlet"]]
-        .mean()
-        .reset_index()
-        .rename(columns={
-            "lat_outlet": "centroid_lat",
-            "lon_outlet": "centroid_lon"
-        })
-    )
-    
-    # ================= STEP 2: ASSIGN DOMINANT =================
-    def assign_sf(row):
-        min_dist = 1e9
-        selected_sf = None
-        for _, c in centroid_sf.iterrows():
-            dist = haversine(
-                row.lon_outlet, row.lat_outlet,
-                c.centroid_lon, c.centroid_lat
-            )
-            if dist < min_dist:
-                min_dist = dist
-                selected_sf = c.nama_sf
-        return selected_sf
-    
-    df["sf_dominan"] = df.apply(assign_sf, axis=1)
-    
-    # ================= STEP 3: REBALANCING =================
-    MIN_OUTLET = 75
-    MAX_DISTANCE_KM = 5
-    
-    summary = df.groupby("sf_dominan").size().to_dict()
-    
-    centroid_dominan = (
-        df.groupby("sf_dominan")[["lat_outlet", "lon_outlet"]]
-        .mean()
-        .reset_index()
-        .rename(columns={
-            "lat_outlet": "centroid_lat",
-            "lon_outlet": "centroid_lon"
-        })
-    )
-    
-    def dist_to_centroid(row, centroid):
-        return haversine(
-            row.lon_outlet, row.lat_outlet,
-            centroid.centroid_lon, centroid.centroid_lat
-        )
-    
-    for sf_target in summary:
-        while summary[sf_target] < MIN_OUTLET:
-    
-            centroid_target = centroid_dominan[
-                centroid_dominan.sf_dominan == sf_target
-            ].iloc[0]
-    
-            candidates = df[df.sf_dominan != sf_target].copy()
-            candidates["dist"] = candidates.apply(
-                lambda r: dist_to_centroid(r, centroid_target), axis=1
-            )
-    
-            candidates = candidates[candidates.dist <= MAX_DISTANCE_KM]
-            if candidates.empty:
-                break
-    
-            candidates = candidates.sort_values("dist")
-    
-            moved = False
-            for idx, row in candidates.iterrows():
-                sf_donor = row.sf_dominan
-                if summary[sf_donor] > MIN_OUTLET:
-                    df.at[idx, "sf_dominan"] = sf_target
-                    summary[sf_target] += 1
-                    summary[sf_donor] -= 1
-                    moved = True
-                    break
-    
-            if not moved:
-                break
-    
-    # ================= SUMMARY =================
-    st.subheader("📊 Summary Outlet per Sales (Final)")
-    summary_df = (
-        df.groupby("sf_dominan")
-        .size()
-        .reset_index(name="total_outlet")
-        .sort_values("total_outlet", ascending=False)
-    )
-    st.dataframe(summary_df)
-    
-    # ================= MAP =================
-    st.subheader("🗺️ Peta Territory Final")
-    
-    map_center = [df.lat_outlet.mean(), df.lon_outlet.mean()]
-    m = folium.Map(location=map_center, zoom_start=11)
-    
-    colors = [
-        "red","blue","green","purple","orange",
-        "darkred","cadetblue","darkgreen","pink",
-        "black","gray"
-    ]
-    
-    color_map = dict(
-        zip(df.sf_dominan.unique(), colors * 10)
-    )
-    
-    for _, r in df.iterrows():
-        folium.CircleMarker(
-            location=[r.lat_outlet, r.lon_outlet],
-            radius=4,
-            color=color_map[r.sf_dominan],
-            fill=True,
-            fill_opacity=0.8,
-            popup=f"""
-            <b>{r.nama_outlet}</b><br>
-            Sales: {r.sf_dominan}
-            """
-        ).add_to(m)
-    
-    st_folium(m, width=1200, height=600)
-    
-    # ================= DOWNLOAD =================
-    st.subheader("⬇️ Download Hasil")
-    
-    output = BytesIO()
-    df.to_excel(output, index=False)
-    
-    st.download_button(
-        "Download Excel Hasil Territory Final",
-        data=output.getvalue(),
-        file_name="hasil_sales_territory_final.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        
+        # Validasi kolom
+        required_cols = ['id_outlet', 'nama_outlet', 'lon_outlet', 'lat_outlet', 'nama_sf']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"Kolom tidak sesuai. Pastikan ada: {', '.join(required_cols)}")
+            st.stop()
 
+        # --- KONFIGURASI DI HALAMAN UTAMA ---
+        st.subheader("⚙️ Konfigurasi Kapasitas & Informasi Input")
+        
+        # Menampilkan perbandingan data input asli
+        original_counts = df['nama_sf'].value_counts().reset_index()
+        original_counts.columns = ['Nama SF (Input)', 'Jumlah Outlet Asli']
+        
+        col_table, col_cfg = st.columns([1, 1])
+        
+        with col_table:
+            st.markdown("**Data SF dari File Input:**")
+            st.dataframe(original_counts, use_container_width=True, hide_index=True)
+        
+        with col_cfg:
+            st.markdown("**Target Kapasitas Baru:**")
+            min_cap = st.number_input("Minimal Outlet per SF", value=75)
+            max_cap = st.number_input("Maksimal Outlet per SF", value=80)
+            
+            total_outlet = len(df)
+            num_clusters = len(original_counts)
+            
+            st.info(f"Total: {total_outlet} outlet | SF: {num_clusters} orang")
+
+            # Penyesuaian otomatis agar k-means tidak error
+            actual_min = min(min_cap, math.floor(total_outlet / num_clusters))
+            if actual_min < min_cap:
+                st.warning(f"Batas bawah disesuaikan ke {actual_min} agar proporsional.")
+
+        if st.button("🚀 Jalankan Optimasi Territory", use_container_width=True):
+            with st.spinner("Menghitung ulang wilayah..."):
+                try:
+                    # 2. Clustering K-Means Constrained
+                    clf = KMeansConstrained(
+                        n_clusters=num_clusters,
+                        size_min=actual_min,
+                        size_max=max_cap,
+                        random_state=42
+                    )
+                    
+                    coords = df[['lat_outlet', 'lon_outlet']].values
+                    df['cluster_label'] = clf.fit_predict(coords)
+                    
+                    # 3. Hungarian Algorithm untuk Nama SF Unik
+                    original_sfs = sorted(original_counts['Nama SF (Input)'].tolist())
+                    cluster_labels = sorted(df['cluster_label'].unique().tolist())
+                    
+                    cost_matrix = []
+                    for label in cluster_labels:
+                        row = []
+                        cluster_data = df[df['cluster_label'] == label]
+                        counts = cluster_data['nama_sf'].value_counts()
+                        for sf in original_sfs:
+                            row.append(-counts.get(sf, 0))
+                        cost_matrix.append(row)
+
+                    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                    mapping = {cluster_labels[row_ind[i]]: original_sfs[col_ind[i]] for i in range(len(row_ind))}
+                    
+                    df['sf_baru_unique'] = df['cluster_label'].map(mapping)
+
+                    # 4. Visualisasi & Hasil
+                    st.subheader("📍 Hasil Re-Mapping Territory")
+                    fig = px.scatter_mapbox(df, lat="lat_outlet", lon="lon_outlet", color="sf_baru_unique",
+                                            hover_name="nama_outlet", zoom=10, height=500)
+                    fig.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Tabel Perbandingan Final
+                    st.subheader("📊 Ringkasan Distribusi Baru")
+                    summary = df.groupby('sf_baru_unique').size().reset_index(name='Jumlah Outlet Baru')
+                    summary = summary.merge(original_counts, left_on='sf_baru_unique', right_on='Nama SF (Input)')
+                    summary = summary[['sf_baru_unique', 'Jumlah Outlet Asli', 'Jumlah Outlet Baru']]
+                    summary.columns = ['Nama Sales Force', 'Qty Awal', 'Qty Baru (Optimasi)']
+                    
+                    st.table(summary)
+
+                    # 5. Download
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        df.drop(columns=['cluster_label']).to_excel(writer, index=False)
+                    
+                    st.download_button("📥 Download Hasil Mapping", output.getvalue(), "territory_remapping.xlsx")
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP
@@ -649,13 +583,3 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
-
-
-
-
-
-
-
-
-
-
