@@ -2,11 +2,12 @@ streamlit
 pandas
 numpy
 scikit-learn
-openpyxl
-xlsxwriter
 geopy
 ortools
 folium
 streamlit-folium
-scipy
 k-means-constrained
+plotly
+scipy
+openpyxl
+xlsxwriter
