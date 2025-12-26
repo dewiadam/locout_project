@@ -8,3 +8,5 @@ geopy
 ortools
 folium
 streamlit-folium
+scipy
+k-means-constrained
