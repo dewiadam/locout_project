@@ -477,7 +477,7 @@ def solve_tsp(distance_matrix):
 
 # ================= PAGE =================
 def page_rute():
-    header("Optimasi Rute Kunjungan SF")
+    st.header("Optimasi Rute Kunjungan SF")
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx", "csv"])
 
@@ -507,7 +507,8 @@ def page_rute():
             else pd.read_excel(uploaded_file)
         )
 
-        required_cols = {"id_outlet", "lat_outlet", "lon_outlet", "nama_sf"}
+        # Pastikan kolom sesuai dengan file yang diupload
+        required_cols = {"lat_outlet", "lon_outlet", "nama_sf"}
         if not required_cols.issubset(df.columns):
             st.error(f"❌ File harus memiliki kolom: {', '.join(required_cols)}")
             return
@@ -517,6 +518,9 @@ def page_rute():
         sf_list = df["nama_sf"].unique()
 
         progress = st.progress(0)
+
+        # Mapping Nama Hari
+        list_hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 
         for i, sf in enumerate(sf_list):
             df_sf = df[df["nama_sf"] == sf].copy()
@@ -545,8 +549,15 @@ def page_rute():
             route_outlet = [idx - 1 for idx in route_idx if idx != 0]
             route_df = df_sf.iloc[route_outlet].copy()
 
+            # ================= PENENTUAN HARI (TEKS) =================
             route_df["urutan_kunjungan"] = np.arange(1, len(route_df) + 1)
-            route_df["hari_ke"] = ((route_df["urutan_kunjungan"] - 1) // 15) + 1
+            
+            # Hitung indeks hari (15 outlet per hari)
+            angka_hari = ((route_df["urutan_kunjungan"] - 1) // 15) + 1
+            
+            # Mengubah angka hari menjadi Nama Hari (Senin, Selasa, dst)
+            route_df["hari_ke"] = angka_hari.apply(lambda x: list_hari[(x-1) % 7])
+            
             route_df["urutan_harian"] = (
                 (route_df["urutan_kunjungan"] - 1) % 15
             ) + 1
@@ -583,3 +594,4 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
