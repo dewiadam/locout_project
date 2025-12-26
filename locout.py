@@ -324,7 +324,86 @@ def page_coverage():
 # =====================================
 # MENU 3 - MAPPING PJP (OPTIMIZED)
 # =====================================
+def page_mapping():
+    header("Sales Territory Mapping Optimizer")
+    
+    # Initialize session state for Mapping
+    if "mapping_processed" not in st.session_state:
+        st.session_state.mapping_processed = False
 
+    uploaded_file = st.file_uploader(
+        "📂 Upload Dataset Excel (id_outlet, nama_outlet, lon_outlet, lat_outlet, nama_sf)",
+        type=["xlsx"], key="mapping_upload"
+    )
+
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        required_cols = ["id_outlet", "nama_outlet", "lon_outlet", "lat_outlet", "nama_sf"]
+        
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"Kolom wajib: {', '.join(required_cols)}")
+            return
+
+        counts_all = df["nama_sf"].value_counts().reset_index()
+        counts_all.columns = ["nama_sf", "Qty Awal"]
+        sf_utama = counts_all[counts_all["Qty Awal"] >= 10]["nama_sf"].tolist()
+        sf_minor = counts_all[counts_all["Qty Awal"] < 10]["nama_sf"].tolist()
+
+        st.subheader("📊 Ringkasan Data Input")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Outlet", len(df))
+        c2.metric("Total Sales Force", len(counts_all))
+        c3.metric("Rata-rata Outlet/SF", round(len(df)/len(counts_all),1))
+
+        # Parameter
+        MIN_CAP, MAX_CAP = 75, 80
+        num_clusters = len(sf_utama)
+        actual_min = min(MIN_CAP, math.floor(len(df) / num_clusters)) if num_clusters > 0 else 0
+
+        if st.button("⚡ Jalankan Optimasi & Mapping", use_container_width=True):
+            with st.spinner("Sedang menghitung territory sales..."):
+                try:
+                    coords = df[["lat_outlet", "lon_outlet"]].values
+                    model = KMeansConstrained(n_clusters=num_clusters, size_min=actual_min, size_max=MAX_CAP, random_state=42)
+                    df["cluster_label"] = model.fit_predict(coords)
+
+                    # Hungarian Assignment
+                    cluster_labels = sorted(df["cluster_label"].unique())
+                    cost_matrix = [[-df[df["cluster_label"] == label]["nama_sf"].value_counts().get(sf, 0) for sf in sf_utama] for label in cluster_labels]
+                    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                    mapping = {cluster_labels[row_ind[i]]: sf_utama[col_ind[i]] for i in range(len(row_ind))}
+                    
+                    df["sf_baru"] = df["cluster_label"].map(mapping)
+                    new_counts = df.groupby("sf_baru").size().reset_index(name="Qty Baru")
+                    summary = counts_all.rename(columns={"nama_sf": "sf_baru"}).merge(new_counts, on="sf_baru", how="left").fillna(0)
+                    summary["Qty Baru"] = summary["Qty Baru"].astype(int)
+
+                    st.session_state.mapping_result = df.copy()
+                    st.session_state.mapping_summary = summary.copy()
+                    st.session_state.mapping_minor = sf_minor
+                    st.session_state.mapping_processed = True
+
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                        df.drop(columns=["cluster_label"]).to_excel(writer, index=False, sheet_name="Detail Mapping")
+                        summary.to_excel(writer, index=False, sheet_name="Summary SF")
+                    st.session_state.mapping_excel = output.getvalue()
+                except Exception as e:
+                    st.error(f"Terjadi kesalahan: {e}")
+
+        if st.session_state.mapping_processed:
+            st.subheader("🗺️ Visualisasi Territory Baru")
+            fig = px.scatter_mapbox(st.session_state.mapping_result, lat="lat_outlet", lon="lon_outlet", color="sf_baru", hover_name="nama_outlet", zoom=8, height=500)
+            fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=0, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.subheader("📊 Ringkasan Distribusi")
+            st.dataframe(st.session_state.mapping_summary, use_container_width=True)
+
+            if st.session_state.mapping_minor:
+                st.warning(f"SF Minor dialihkan: {', '.join(st.session_state.mapping_minor)}")
+
+            st.download_button("📩 Download Hasil Mapping", st.session_state.mapping_excel, file_name="territory_mapping_final.xlsx")
 
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP
@@ -495,6 +574,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
