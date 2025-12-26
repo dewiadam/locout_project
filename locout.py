@@ -327,103 +327,273 @@ def page_coverage():
 def page_mapping():
     header("Mapping PJP")
     
-    # 1. Upload File
-    uploaded_file = st.file_uploader("Upload Dataset Excel (id_outlet, nama_outlet, lon_outlet, lat_outlet, nama_sf)", type=["xlsx"])
+# ======================================================
+# PAGE CONFIG
+# ======================================================
+st.set_page_config(
+    page_title="Sales Territory Optimizer",
+    layout="wide"
+)
 
-    if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        
-        # Validasi kolom
-        required_cols = ['id_outlet', 'nama_outlet', 'lon_outlet', 'lat_outlet', 'nama_sf']
-        if not all(col in df.columns for col in required_cols):
-            st.error(f"Kolom tidak sesuai. Pastikan ada: {', '.join(required_cols)}")
-            st.stop()
+st.title("🚀 Sales Territory Mapping Optimizer")
+st.caption("Optimasi pembagian outlet berbasis kedekatan geografis & hard balancing")
 
-        # --- KONFIGURASI DI HALAMAN UTAMA ---
-        st.subheader("⚙️ Konfigurasi Kapasitas & Informasi Input")
-        
-        # Menampilkan perbandingan data input asli
-        original_counts = df['nama_sf'].value_counts().reset_index()
-        original_counts.columns = ['Nama SF (Input)', 'Jumlah Outlet Asli']
-        
-        col_table, col_cfg = st.columns([1, 1])
-        
-        with col_table:
-            st.markdown("**Data SF dari File Input:**")
-            st.dataframe(original_counts, use_container_width=True, hide_index=True)
-        
-        with col_cfg:
-            st.markdown("**Target Kapasitas Baru:**")
-            min_cap = st.number_input("Minimal Outlet per SF", value=75)
-            max_cap = st.number_input("Maksimal Outlet per SF", value=80)
-            
-            total_outlet = len(df)
-            num_clusters = len(original_counts)
-            
-            st.info(f"Total: {total_outlet} outlet | SF: {num_clusters} orang")
+# ======================================================
+# SESSION STATE INIT
+# ======================================================
+state_defaults = {
+    "processed": False,
+    "result_df": None,
+    "summary_df": None,
+    "excel_output": None,
+    "sf_minor": []
+}
 
-            # Penyesuaian otomatis agar k-means tidak error
-            actual_min = min(min_cap, math.floor(total_outlet / num_clusters))
-            if actual_min < min_cap:
-                st.warning(f"Batas bawah disesuaikan ke {actual_min} agar proporsional.")
+for k, v in state_defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-        if st.button("🚀 Jalankan Optimasi Territory", use_container_width=True):
-            with st.spinner("Menghitung ulang wilayah..."):
-                try:
-                    # 2. Clustering K-Means Constrained
-                    clf = KMeansConstrained(
-                        n_clusters=num_clusters,
-                        size_min=actual_min,
-                        size_max=max_cap,
-                        random_state=42
-                    )
-                    
-                    coords = df[['lat_outlet', 'lon_outlet']].values
-                    df['cluster_label'] = clf.fit_predict(coords)
-                    
-                    # 3. Hungarian Algorithm untuk Nama SF Unik
-                    original_sfs = sorted(original_counts['Nama SF (Input)'].tolist())
-                    cluster_labels = sorted(df['cluster_label'].unique().tolist())
-                    
-                    cost_matrix = []
-                    for label in cluster_labels:
-                        row = []
-                        cluster_data = df[df['cluster_label'] == label]
-                        counts = cluster_data['nama_sf'].value_counts()
-                        for sf in original_sfs:
-                            row.append(-counts.get(sf, 0))
-                        cost_matrix.append(row)
+# ======================================================
+# FILE UPLOADER
+# ======================================================
+uploaded_file = st.file_uploader(
+    "📂 Upload Dataset Excel (id_outlet, nama_outlet, lon_outlet, lat_outlet, nama_sf)",
+    type=["xlsx"]
+)
 
-                    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-                    mapping = {cluster_labels[row_ind[i]]: original_sfs[col_ind[i]] for i in range(len(row_ind))}
-                    
-                    df['sf_baru_unique'] = df['cluster_label'].map(mapping)
+if not uploaded_file:
+    st.info("Silakan upload file Excel terlebih dahulu.")
+    st.stop()
 
-                    # 4. Visualisasi & Hasil
-                    st.subheader("📍 Hasil Re-Mapping Territory")
-                    fig = px.scatter_mapbox(df, lat="lat_outlet", lon="lon_outlet", color="sf_baru_unique",
-                                            hover_name="nama_outlet", zoom=10, height=500)
-                    fig.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
-                    st.plotly_chart(fig, use_container_width=True)
+# ======================================================
+# LOAD & VALIDASI DATA
+# ======================================================
+df = pd.read_excel(uploaded_file)
 
-                    # Tabel Perbandingan Final
-                    st.subheader("📊 Ringkasan Distribusi Baru")
-                    summary = df.groupby('sf_baru_unique').size().reset_index(name='Jumlah Outlet Baru')
-                    summary = summary.merge(original_counts, left_on='sf_baru_unique', right_on='Nama SF (Input)')
-                    summary = summary[['sf_baru_unique', 'Jumlah Outlet Asli', 'Jumlah Outlet Baru']]
-                    summary.columns = ['Nama Sales Force', 'Qty Awal', 'Qty Baru (Optimasi)']
-                    
-                    st.table(summary)
+required_cols = [
+    "id_outlet", "nama_outlet",
+    "lon_outlet", "lat_outlet",
+    "nama_sf"
+]
 
-                    # 5. Download
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        df.drop(columns=['cluster_label']).to_excel(writer, index=False)
-                    
-                    st.download_button("📥 Download Hasil Mapping", output.getvalue(), "territory_remapping.xlsx")
+if not all(col in df.columns for col in required_cols):
+    st.error(f"Kolom wajib: {', '.join(required_cols)}")
+    st.stop()
 
-                except Exception as e:
-                    st.error(f"Error: {e}")
+# ======================================================
+# ANALISIS DATA AWAL
+# ======================================================
+counts_all = df["nama_sf"].value_counts().reset_index()
+counts_all.columns = ["nama_sf", "Qty Awal"]
+
+sf_utama = counts_all[counts_all["Qty Awal"] >= 10]["nama_sf"].tolist()
+sf_minor = counts_all[counts_all["Qty Awal"] < 10]["nama_sf"].tolist()
+
+# ======================================================
+# RINGKASAN INPUT
+# ======================================================
+st.subheader("📊 Ringkasan Data Input")
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Total Outlet", len(df))
+c2.metric("Total Sales Force", counts_all.shape[0])
+c3.metric("Rata-rata Outlet / SF", round(len(df) / counts_all.shape[0], 1))
+
+i1, i2 = st.columns(2)
+i1.success(f"SF Utama (≥ 10 outlet): {len(sf_utama)}")
+i2.warning(f"SF Minor (< 10 outlet): {len(sf_minor)}")
+
+# ======================================================
+# TABEL SF AWAL
+# ======================================================
+st.subheader("📋 Distribusi Outlet Awal per SF")
+
+def highlight_minor(row):
+    return [
+        "background-color:#ffd6d6" if row["Qty Awal"] < 10 else ""
+        for _ in row
+    ]
+
+st.dataframe(
+    counts_all.style.apply(highlight_minor, axis=1),
+    use_container_width=True,
+    hide_index=True
+)
+
+# ======================================================
+# PARAMETER (LOCKED)
+# ======================================================
+st.subheader("⚙️ Parameter Optimasi")
+
+MIN_CAP = 75
+MAX_CAP = 80
+
+total_outlet = len(df)
+num_clusters = len(sf_utama)
+actual_min = min(MIN_CAP, math.floor(total_outlet / num_clusters))
+
+st.caption(
+    f"Sistem membagi {total_outlet} outlet ke {num_clusters} SF utama "
+    f"(min {actual_min}, max {MAX_CAP})"
+)
+
+# ======================================================
+# PROSES OPTIMASI
+# ======================================================
+if st.button("⚡ Jalankan Optimasi & Mapping", use_container_width=True):
+
+    with st.spinner("Sedang menghitung territory sales..."):
+        try:
+            coords = df[["lat_outlet", "lon_outlet"]].values
+
+            model = KMeansConstrained(
+                n_clusters=num_clusters,
+                size_min=actual_min,
+                size_max=MAX_CAP,
+                random_state=42
+            )
+
+            df["cluster_label"] = model.fit_predict(coords)
+
+            # --- Hungarian Assignment ---
+            cluster_labels = sorted(df["cluster_label"].unique())
+            cost_matrix = []
+
+            for label in cluster_labels:
+                cluster_df = df[df["cluster_label"] == label]
+                counts = cluster_df["nama_sf"].value_counts()
+                cost_matrix.append(
+                    [-counts.get(sf, 0) for sf in sf_utama]
+                )
+
+            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            mapping = {
+                cluster_labels[row_ind[i]]: sf_utama[col_ind[i]]
+                for i in range(len(row_ind))
+            }
+
+            df["sf_baru"] = df["cluster_label"].map(mapping)
+
+            # ======================================================
+            # SUMMARY FINAL (AMAN – TIDAK ADA YANG HILANG)
+            # ======================================================
+            new_counts = (
+                df.groupby("sf_baru")
+                .size()
+                .reset_index(name="Qty Baru")
+            )
+
+            summary = (
+                counts_all
+                .rename(columns={"nama_sf": "sf_baru"})
+                .merge(new_counts, on="sf_baru", how="left")
+                .fillna({"Qty Baru": 0})
+            )
+
+            summary["Qty Baru"] = summary["Qty Baru"].astype(int)
+
+            # ======================================================
+            # SIMPAN KE SESSION STATE
+            # ======================================================
+            st.session_state.result_df = df.copy()
+            st.session_state.summary_df = summary.copy()
+            st.session_state.sf_minor = sf_minor
+            st.session_state.processed = True
+
+            # ======================================================
+            # EXCEL OUTPUT
+            # ======================================================
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.drop(columns=["cluster_label"]).to_excel(
+                    writer, index=False, sheet_name="Detail Mapping"
+                )
+                summary.to_excel(
+                    writer, index=False, sheet_name="Summary SF"
+                )
+
+            st.session_state.excel_output = output.getvalue()
+
+            st.success("Optimasi territory selesai ✅")
+
+        except Exception as e:
+            st.error(f"Terjadi kesalahan: {e}")
+
+# ======================================================
+# HASIL AKHIR
+# ======================================================
+if st.session_state.processed:
+
+    df = st.session_state.result_df
+    summary = st.session_state.summary_df
+
+    st.subheader("🗺️ Visualisasi Territory Baru")
+
+    fig = px.scatter_mapbox(
+        df,
+        lat="lat_outlet",
+        lon="lon_outlet",
+        color="sf_baru",
+        hover_name="nama_outlet",
+        zoom=8,
+        height=550
+    )
+
+    fig.update_layout(
+        mapbox_style="open-street-map",
+        margin=dict(l=0, r=0, t=0, b=0)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ======================================================
+    # SUMMARY TABLE FINAL
+    # ======================================================
+    st.subheader("📊 Ringkasan Distribusi Outlet")
+
+    def highlight_zero(row):
+        if row["Qty Baru"] == 0:
+            return ["background-color:#ffd6d6"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(
+        summary.style.apply(highlight_zero, axis=1),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # ======================================================
+    # KETERANGAN / REKOMENDASI (TIDAK HILANG)
+    # ======================================================
+    st.subheader("💡 Catatan & Rekomendasi")
+
+    if len(st.session_state.sf_minor) > 0:
+        minor_names = ", ".join(st.session_state.sf_minor)
+        st.warning(
+            f"""
+Sales Force berikut memiliki kurang dari 10 outlet pada data awal,
+outlet mereka telah dialihkan ke SF utama yang lokasinya paling berdekatan.
+
+**{minor_names}**
+
+📌 Rekomendasi:
+- Disarankan untuk dialih-tugaskan sebagai **SF pencari New RS.**
+            """
+        )
+    else:
+        st.success("Semua Sales Force mendapatkan alokasi outlet pada hasil akhir.")
+
+    # ======================================================
+    # DOWNLOAD (AMAN – TIDAK REFRESH)
+    # ======================================================
+    st.download_button(
+        "📩 Download Hasil Mapping",
+        st.session_state.excel_output,
+        file_name="territory_mapping_final.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_mapping_final"
+    )
+
 
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP
@@ -594,4 +764,5 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
