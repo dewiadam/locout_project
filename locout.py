@@ -518,8 +518,9 @@ def page_mapping():
         st.subheader("💡 Catatan")
         if sf_minor:
             st.warning(
-                f"SF berikut tidak mendapatkan outlet pada hasil akhir: "
+                f"SF berikut memiliki kurang dari 10 outlet."
                 f"**{', '.join(sf_minor)}**"
+                f"Berdasarkan Berdasarkan optimasi geografis, outlet mereka telah dialihkan ke SF Utama yang lokasinya paling berdekatan."
             )
         else:
             st.success("Semua SF mendapatkan alokasi outlet.")
@@ -702,6 +703,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
