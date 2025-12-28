@@ -501,7 +501,7 @@ def solve_tsp(distance_matrix):
 
 # ================= PAGE =================
 def page_rute():
-    header("Mapping & Optimasi Territory PJP")
+    header("Optimasi Rute PJP SF")
     
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx", "csv"])
 
@@ -697,6 +697,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
