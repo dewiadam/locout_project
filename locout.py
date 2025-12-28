@@ -324,7 +324,7 @@ def page_coverage():
 # MENU 3 - MAPPING PJP (MODIFIED)
 # =====================================
 def page_mapping():
-    header("Mapping & Optimasi Territory PJP")
+    header("Re-Mapping PJP")
 
     state_defaults = {
         "processed": False,
@@ -452,31 +452,6 @@ def page_mapping():
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP
 # =====================================
-st.sidebar.markdown("""
-    <div style="
-        background-color: #d32f2f;
-        color: white;
-        text-align: center;
-        font-weight: 700;
-        font-size: 20px;
-        padding: 12px 0;
-        border-radius: 10px;
-        margin-bottom: 25px;
-        box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-    ">
-        LocOut Tools
-    </div>
-""", unsafe_allow_html=True)
-
-menu = st.sidebar.radio(
-    "",
-    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Mapping PJP", "🗺️ Optimasi Rute PJP"],
-    label_visibility="collapsed"
-)
-
-# =====================================
-# MENU 4 - OPTIMASI RUTE PJP
-# =====================================
 def distance_to_kantor(lat, lon, kantor_coord):
     return geodesic((lat, lon), kantor_coord).km
 
@@ -526,8 +501,8 @@ def solve_tsp(distance_matrix):
 
 # ================= PAGE =================
 def page_rute():
-    st.header("Optimasi Rute Kunjungan SF")
-
+    header("Mapping & Optimasi Territory PJP")
+    
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx", "csv"])
 
     with st.expander("🏢 Lokasi Kantor & Pengaturan", expanded=True):
@@ -722,6 +697,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
