@@ -452,6 +452,31 @@ def page_mapping():
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP
 # =====================================
+st.sidebar.markdown("""
+    <div style="
+        background-color: #d32f2f;
+        color: white;
+        text-align: center;
+        font-weight: 700;
+        font-size: 20px;
+        padding: 12px 0;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+    ">
+        LocOut Tools
+    </div>
+""", unsafe_allow_html=True)
+
+menu = st.sidebar.radio(
+    "",
+    ["🔎 Deteksi Anomali Outlet", "🛰️ Deteksi Coverage Outlet", "🗺️ Mapping PJP", "🗺️ Optimasi Rute PJP"],
+    label_visibility="collapsed"
+)
+
+# =====================================
+# MENU 4 - OPTIMASI RUTE PJP
+# =====================================
 def distance_to_kantor(lat, lon, kantor_coord):
     return geodesic((lat, lon), kantor_coord).km
 
@@ -505,7 +530,7 @@ def page_rute():
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx", "csv"])
 
-    with st.expander("🏢 Lokasi Kantor", expanded=True):
+    with st.expander("🏢 Lokasi Kantor & Pengaturan", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             kantor_lat = st.number_input("Latitude Kantor", value=-6.200000, format="%.6f")
@@ -518,82 +543,161 @@ def page_rute():
         horizontal=True
     )
 
-    proses = st.button("🚀 Proses Data")
-
-    if proses:
+    # Tombol pemicu proses
+    if st.button("🚀 Proses Data"):
         if uploaded_file is None:
             st.warning("⚠️ Harap upload file outlet terlebih dahulu.")
-            return
+        else:
+            # ================= PROSES DATA (Dijalankan saat tombol ditekan) =================
+            try:
+                df = (
+                    pd.read_csv(uploaded_file)
+                    if uploaded_file.name.endswith(".csv")
+                    else pd.read_excel(uploaded_file)
+                )
 
-        df = (
-            pd.read_csv(uploaded_file)
-            if uploaded_file.name.endswith(".csv")
-            else pd.read_excel(uploaded_file)
-        )
+                # Cek kolom wajib (opsional: handle nama_outlet jika tidak ada)
+                if "nama_outlet" not in df.columns:
+                    df["nama_outlet"] = "Outlet " + df.index.astype(str)
+                
+                required_cols = {"lat_outlet", "lon_outlet", "nama_sf"}
+                if not required_cols.issubset(df.columns):
+                    st.error("❌ File harus memiliki kolom: lat_outlet, lon_outlet, nama_sf")
+                else:
+                    kantor_coord = (kantor_lat, kantor_lon)
+                    hasil_list = []
+                    sf_list = df["nama_sf"].unique()
+                    list_hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 
-        # Pastikan kolom sesuai dengan file yang diupload
-        required_cols = {"lat_outlet", "lon_outlet", "nama_sf"}
-        if not required_cols.issubset(df.columns):
-            st.error(f"❌ File harus memiliki kolom: {', '.join(required_cols)}")
-            return
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
 
-        kantor_coord = (kantor_lat, kantor_lon)
-        hasil_list = []
-        sf_list = df["nama_sf"].unique()
+                    for i, sf in enumerate(sf_list):
+                        status_text.text(f"Memproses Rute SF: {sf}...")
+                        df_sf = df[df["nama_sf"] == sf].copy()
 
-        progress = st.progress(0)
+                        # 1. Hitung Jarak
+                        df_sf["jarak_kantor_km"] = df_sf.apply(
+                            lambda r: distance_to_kantor(r.lat_outlet, r.lon_outlet, kantor_coord), axis=1
+                        )
 
-        # Mapping Nama Hari
-        list_hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+                        # 2. Clustering (K-Means Constrained)
+                        n_outlets = len(df_sf)
+                        if n_outlets == 0: continue
+                        n_days = math.ceil(n_outlets / 15)
+                        
+                        X = df_sf[["lat_outlet", "lon_outlet"]].values
+                        # Handle jika jumlah outlet sangat sedikit (< n_clusters)
+                        n_days = min(n_days, n_outlets) 
+                        
+                        clf = KMeansConstrained(
+                            n_clusters=n_days,
+                            size_min=1,
+                            size_max=15,
+                            random_state=42
+                        )
+                        df_sf["cluster_id"] = clf.fit_predict(X)
 
-        for i, sf in enumerate(sf_list):
-            df_sf = df[df["nama_sf"] == sf].copy()
+                        # 3. Sorting Cluster
+                        cluster_stats = []
+                        for c_id in range(n_days):
+                            sub = df_sf[df_sf["cluster_id"] == c_id]
+                            avg_dist = sub["jarak_kantor_km"].mean()
+                            cluster_stats.append({"cluster_id": c_id, "avg_dist": avg_dist})
+                        
+                        reverse_sort = True if urutan_rute == "Terjauh dari Kantor" else False
+                        cluster_stats.sort(key=lambda x: x["avg_dist"], reverse=reverse_sort)
 
-            # ================= HITUNG JARAK KE KANTOR =================
-            df_sf["jarak_kantor_km"] = df_sf.apply(
-                lambda r: distance_to_kantor(
-                    r.lat_outlet, r.lon_outlet, kantor_coord
-                ),
-                axis=1
-            )
+                        # 4. TSP per Cluster
+                        for day_idx, stats in enumerate(cluster_stats):
+                            c_id = stats["cluster_id"]
+                            df_day = df_sf[df_sf["cluster_id"] == c_id].copy()
 
-            # ================= SORT SESUAI PILIHAN =================
-            ascending = True if urutan_rute == "Terdekat dari Kantor" else False
-            df_sf = df_sf.sort_values(
-                "jarak_kantor_km", ascending=ascending
-            ).reset_index(drop=True)
+                            coords = [kantor_coord] + list(zip(df_day["lat_outlet"], df_day["lon_outlet"]))
+                            dist_matrix = create_distance_matrix(coords)
+                            route_idx = solve_tsp(dist_matrix)
 
-            # ================= TSP =================
-            coords = [kantor_coord] + list(
-                zip(df_sf["lat_outlet"], df_sf["lon_outlet"])
-            )
-            dist_matrix = create_distance_matrix(coords)
-            route_idx = solve_tsp(dist_matrix)
+                            actual_indices = [idx - 1 for idx in route_idx if idx != 0]
+                            df_day_sorted = df_day.iloc[actual_indices].copy()
 
-            route_outlet = [idx - 1 for idx in route_idx if idx != 0]
-            route_df = df_sf.iloc[route_outlet].copy()
+                            df_day_sorted["hari_ke"] = list_hari[day_idx % 7]
+                            df_day_sorted["urutan_harian"] = range(1, len(df_day_sorted) + 1)
+                            
+                            hasil_list.append(df_day_sorted)
 
-            # ================= PENENTUAN HARI (TEKS) =================
-            route_df["urutan_kunjungan"] = np.arange(1, len(route_df) + 1)
+                        progress_bar.progress((i + 1) / len(sf_list))
+
+                    # GABUNGKAN HASIL & SIMPAN KE SESSION STATE
+                    if hasil_list:
+                        df_hasil = pd.concat(hasil_list, ignore_index=True)
+                        st.session_state['hasil_optimasi_rute'] = df_hasil  # <--- KUNCI PERBAIKAN DISINI
+                        st.session_state['kantor_coord'] = kantor_coord
+                        status_text.text("✅ Proses Selesai!")
+                    else:
+                        st.warning("Tidak ada data yang diproses.")
+
+            except Exception as e:
+                st.error(f"Terjadi kesalahan: {e}")
+
+    # ================= TAMPILKAN HASIL DARI SESSION STATE =================
+    # Kode di bawah ini dijalankan setiap kali ada interaksi, selama data sudah ada di memory
+    if 'hasil_optimasi_rute' in st.session_state:
+        df_hasil = st.session_state['hasil_optimasi_rute']
+        kantor_coord_saved = st.session_state.get('kantor_coord', (kantor_lat, kantor_lon))
+
+        st.divider()
+        st.subheader("🗺️ Visualisasi Rute Kunjungan")
+        
+        # Dropdown Filter SF
+        sf_list_res = df_hasil["nama_sf"].unique()
+        sf_option = st.selectbox("Pilih SF untuk melihat Peta:", sf_list_res)
+        
+        df_map = df_hasil[df_hasil["nama_sf"] == sf_option].copy()
+        
+        # Setup Map
+        m = folium.Map(location=[kantor_coord_saved[0], kantor_coord_saved[1]], zoom_start=13)
+
+        # Marker Kantor
+        folium.Marker(
+            [kantor_coord_saved[0], kantor_coord_saved[1]],
+            popup="<b>KANTOR</b>",
+            icon=folium.Icon(color="black", icon="building", prefix="fa")
+        ).add_to(m)
+
+        color_map = {
+            "Senin": "red", "Selasa": "blue", "Rabu": "green", 
+            "Kamis": "purple", "Jumat": "orange", "Sabtu": "darkred", "Minggu": "gray"
+        }
+
+        # Draw Rute
+        days_order = df_map["hari_ke"].unique()
+        for hari in days_order:
+            df_day_vis = df_map[df_map["hari_ke"] == hari].sort_values("urutan_harian")
+            warna = color_map.get(hari, "gray")
             
-            # Hitung indeks hari (15 outlet per hari)
-            angka_hari = ((route_df["urutan_kunjungan"] - 1) // 15) + 1
+            route_coords = [kantor_coord_saved] + list(zip(df_day_vis["lat_outlet"], df_day_vis["lon_outlet"]))
             
-            # Mengubah angka hari menjadi Nama Hari (Senin, Selasa, dst)
-            route_df["hari_ke"] = angka_hari.apply(lambda x: list_hari[(x-1) % 7])
-            
-            route_df["urutan_harian"] = (
-                (route_df["urutan_kunjungan"] - 1) % 15
-            ) + 1
-            route_df["nama_sf"] = sf
+            folium.PolyLine(
+                locations=route_coords, color=warna, weight=3, opacity=0.7, tooltip=f"Rute {hari}"
+            ).add_to(m)
 
-            hasil_list.append(route_df)
-            progress.progress((i + 1) / len(sf_list))
+            for _, row in df_day_vis.iterrows():
+                popup_content = f"""
+                <b>{row['nama_outlet']}</b><br>
+                Hari: {row['hari_ke']}<br>
+                Urutan: {row['urutan_harian']}<br>
+                Jarak: {row['jarak_kantor_km']:.2f} km
+                """
+                folium.CircleMarker(
+                    location=[row["lat_outlet"], row["lon_outlet"]],
+                    radius=6, color=warna, fill=True, fill_color=warna, fill_opacity=0.9,
+                    popup=folium.Popup(popup_content, max_width=250)
+                ).add_to(m)
 
-        # ================= FINAL OUTPUT =================
-        df_hasil = pd.concat(hasil_list, ignore_index=True)
+        st_folium(m, width=None, height=500)
 
-        st.subheader("📊 Hasil Rute Kunjungan")
+        # Tabel & Download
+        st.subheader("📊 Tabel Detail Rute")
         st.dataframe(df_hasil, use_container_width=True)
 
         output = BytesIO()
@@ -618,6 +722,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
