@@ -452,7 +452,7 @@ def page_mapping():
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP (DENGAN VISUALISASI)
 # =====================================
-# --- Helper Functions (Tetap sama) ---
+# --- Helper Functions ---
 def distance_to_kantor(lat, lon, kantor_coord):
     return geodesic((lat, lon), kantor_coord).km
 
@@ -502,8 +502,8 @@ def solve_tsp(distance_matrix):
 
 # --- PAGE UTAMA ---
 def page_rute():
-    header("Optimasi Rute Kunjungan SF")
-
+    header("Optimasi Rute Kunjungan PJP")
+    
     # Inisialisasi session state agar hasil tidak hilang saat interaksi peta
     if "df_rute_hasil" not in st.session_state:
         st.session_state.df_rute_hasil = None
@@ -729,6 +729,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
