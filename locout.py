@@ -502,9 +502,9 @@ def solve_tsp(distance_matrix):
 
 # --- PAGE UTAMA ---
 def page_rute():
-    header("Optimasi Rute Kunjungan PJP SF")
+    header("Deteksi Coverage Outlet")
 
-    # Inisialisasi session state agar hasil tidak hilang saat interaksi peta
+    # Inisialisasi session state agar hasil tidak hilang ketika interaksi peta
     if "df_rute_hasil" not in st.session_state:
         st.session_state.df_rute_hasil = None
     if "kantor_coord" not in st.session_state:
@@ -729,6 +729,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
