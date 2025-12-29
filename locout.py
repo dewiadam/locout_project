@@ -12,9 +12,7 @@ from k_means_constrained import KMeansConstrained
 import io
 import plotly.express as px
 import math
-from scipy.optimize import linear_sum_assignment # Library tambahan untuk pemetaan unikk
-
-
+from scipy.optimize import linear_sum_assignment # Library tambahan untuk pemetaan unik
 
 # =====================================
 # STYLE UMUM (HEADER, SIDEBAR, BUTTON)
@@ -731,6 +729,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
