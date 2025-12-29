@@ -504,7 +504,7 @@ def solve_tsp(distance_matrix):
 
 # --- PAGE UTAMA ---
 def page_rute():
-    st.header("Optimasi Rute Kunjungan SF")
+    header("Optimasi Rute Kunjungan SF")
 
     # Inisialisasi session state agar hasil tidak hilang saat interaksi peta
     if "df_rute_hasil" not in st.session_state:
@@ -514,7 +514,7 @@ def page_rute():
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx", "csv"])
 
-    with st.expander("🏢 Lokasi Kantor", expanded=True):
+    with st.expander("🏢 Lokasi Kantor (Silakan Masukkan LongLat)", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             kantor_lat = st.number_input("Latitude Kantor", value=-6.200000, format="%.6f")
@@ -731,6 +731,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
