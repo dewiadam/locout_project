@@ -452,7 +452,7 @@ def page_mapping():
 # =====================================
 # MENU 4 - OPTIMASI RUTE PJP (DENGAN VISUALISASI)
 # =====================================
-# --- Helper Functions ---
+# --- Helper Functions (Tetap sama) ---
 def distance_to_kantor(lat, lon, kantor_coord):
     return geodesic((lat, lon), kantor_coord).km
 
@@ -502,8 +502,8 @@ def solve_tsp(distance_matrix):
 
 # --- PAGE UTAMA ---
 def page_rute():
-    header("Optimasi Rute Kunjungan PJP")
-    
+    header("Optimasi Rute Kunjungan SF")
+
     # Inisialisasi session state agar hasil tidak hilang saat interaksi peta
     if "df_rute_hasil" not in st.session_state:
         st.session_state.df_rute_hasil = None
@@ -512,7 +512,7 @@ def page_rute():
 
     uploaded_file = st.file_uploader("📂 Upload file Outlet PJP", type=["xlsx", "csv"])
 
-    with st.expander("🏢 Lokasi Kantor (Silakan Masukkan LongLat)", expanded=True):
+    with st.expander("🏢 Lokasi Kantor", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             kantor_lat = st.number_input("Latitude Kantor", value=-6.200000, format="%.6f")
@@ -729,6 +729,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
