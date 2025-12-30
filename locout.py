@@ -625,7 +625,7 @@ def page_rute():
             angka_hari = ((route_df["urutan_kunjungan"] - 1) // outlet_per_hari) + 1
             
             route_df["hari_ke"] = angka_hari.apply(
-                lambda x: list_hari[(x-1) % 7] if x <= len(list_hari)*10 else f"Hari {x}"
+                lambda x: list_hari[(x-1) % 5] if x <= len(list_hari)*10 else f"Hari {x}"
             )
             
             route_df["urutan_harian"] = ((route_df["urutan_kunjungan"] - 1) % outlet_per_hari) + 1
@@ -764,6 +764,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
