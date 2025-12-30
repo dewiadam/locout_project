@@ -453,7 +453,9 @@ def page_mapping():
 # =====================================
 # MENU - OPTIMASI RUTE PJP (UPDATED LOGIC)
 # =====================================
-
+# =====================================
+# MENU - OPTIMASI RUTE PJP (UPDATED LOGIC)
+# =====================================
 # --- Helper Functions ---
 def distance_to_kantor(lat, lon, kantor_coord):
     return geodesic((lat, lon), kantor_coord).km
@@ -472,7 +474,7 @@ def solve_greedy_tsp(distance_matrix, start_strategy="closest"):
     Algoritma Greedy Nearest Neighbor:
     1. Mulai dari Index 0 (Kantor).
     2. Pilih Outlet Pertama berdasarkan start_strategy (closest/farthest dari kantor).
-    3. Outlet berikutnya dipilih yang TERDEKAT dari outlet saat ini (bukan dari kantor).
+    3. Outlet berikutnya dipilih yang TERDEKAT dari outlet saat ini.
     """
     n = len(distance_matrix)
     visited = [False] * n
@@ -480,10 +482,7 @@ def solve_greedy_tsp(distance_matrix, start_strategy="closest"):
     visited[0] = True
     
     # --- LANGKAH 1: Tentukan Outlet Pertama ---
-    # Ambil jarak dari kantor (row 0) ke semua node lain
     dist_from_office = distance_matrix[0]
-    
-    # Cari kandidat (semua indeks kecuali 0/kantor)
     candidates = [i for i in range(1, n)]
     
     if not candidates:
@@ -513,20 +512,16 @@ def solve_greedy_tsp(distance_matrix, start_strategy="closest"):
     
     # --- LANGKAH 2: Loop Outlet ke Outlet Terdekat ---
     while len(route) < n:
-        # Cari node yang belum dikunjungi
         candidates = [i for i in range(n) if not visited[i]]
-        
         best_node = -1
         min_dist = float('inf')
         
-        # Bandingkan jarak dari current_node ke semua kandidat tersisa
         for next_node in candidates:
             d = distance_matrix[current_node][next_node]
             if d < min_dist:
                 min_dist = d
                 best_node = next_node
         
-        # Update posisi
         current_node = best_node
         route.append(current_node)
         visited[current_node] = True
@@ -535,9 +530,8 @@ def solve_greedy_tsp(distance_matrix, start_strategy="closest"):
 
 # --- PAGE UTAMA ---
 def page_rute():
-    header("Optimasi Rute Kunjungan SF (Greedy Route)")
+    header("Optimasi Rute Kunjungan SF (5 Hari Kerja)")
 
-    # Inisialisasi session state agar hasil tidak hilang saat interaksi peta
     if "df_rute_hasil" not in st.session_state:
         st.session_state.df_rute_hasil = None
     if "kantor_coord" not in st.session_state:
@@ -552,7 +546,6 @@ def page_rute():
         with col2:
             kantor_lon = st.number_input("Longitude Kantor", value=106.816666, format="%.6f")
 
-    # User memilih strategi awal
     urutan_rute = st.radio(
         "🔁 Strategi Awal Kunjungan",
         ["Terdekat dari Kantor", "Terjauh dari Kantor"],
@@ -586,12 +579,15 @@ def page_rute():
         sf_list = df["nama_sf"].unique()
 
         progress = st.progress(0)
+        
+        # Hari kerja tetap (Senin - Jumat)
         list_hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]
+        jumlah_hari_kerja = 5
 
         for i, sf in enumerate(sf_list):
             df_sf = df[df["nama_sf"] == sf].copy().reset_index(drop=True)
 
-            # Hitung Jarak ke Kantor (Hanya untuk informasi di tabel, tidak mempengaruhi urutan logic baru)
+            # Hitung Jarak ke Kantor
             df_sf["jarak_kantor_km"] = df_sf.apply(
                 lambda r: distance_to_kantor(r.lat_outlet, r.lon_outlet, kantor_coord),
                 axis=1
@@ -603,42 +599,51 @@ def page_rute():
             # Hitung Matrix Jarak
             dist_matrix = create_distance_matrix(coords)
             
-            # Tentukan Strategy string
+            # Tentukan Strategy
             strategy = "farthest" if urutan_rute == "Terjauh dari Kantor" else "closest"
             
-            # --- PANGGIL FUNGSI GREEDY BARU ---
+            # --- JALANKAN GREEDY TSP ---
             route_idx = solve_greedy_tsp(dist_matrix, start_strategy=strategy)
 
-            # Ambil indeks outlet saja (buang index 0/kantor)
-            # Karena di 'coords', outlet mulai dari index 1.
-            # Jadi kita kurangi 1 agar sesuai dengan index DataFrame (0-based)
+            # Ambil indeks outlet (buang index 0/kantor)
             route_outlet_indices = [idx - 1 for idx in route_idx if idx != 0]
 
             # Re-order DataFrame berdasarkan hasil rute
             route_df = df_sf.iloc[route_outlet_indices].copy()
-
-            # Assign Urutan
             route_df["urutan_kunjungan"] = np.arange(1, len(route_df) + 1)
             
-            # Assign Hari (Asumsi 15 outlet per hari)
-            outlet_per_hari = 15
-            angka_hari = ((route_df["urutan_kunjungan"] - 1) // outlet_per_hari) + 1
+            # --- LOGIKA BAGI RATA (EVEN DISTRIBUTION) ---
+            total_outlet = len(route_df)
             
-            route_df["hari_ke"] = angka_hari.apply(
-                lambda x: list_hari[(x-1) % 5] if x <= len(list_hari)*10 else f"Hari {x}"
-            )
+            # Hitung base (jumlah minimal per hari) dan sisa
+            base_per_day = total_outlet // jumlah_hari_kerja
+            remainder = total_outlet % jumlah_hari_kerja
             
-            route_df["urutan_harian"] = ((route_df["urutan_kunjungan"] - 1) % outlet_per_hari) + 1
+            # Generate list hari sesuai urutan
+            assignment_hari = []
+            
+            for d in range(jumlah_hari_kerja):
+                # Jika hari ke-d kurang dari sisa, tambahkan 1 outlet ekstra
+                count = base_per_day + 1 if d < remainder else base_per_day
+                if count > 0:
+                    assignment_hari.extend([list_hari[d]] * count)
+            
+            # Jika outlet sangat sedikit (kurang dari 5), list assignment_hari sudah terisi otomatis
+            # Assign ke kolom dataframe
+            route_df["hari_ke"] = assignment_hari
+            
+            # Hitung urutan harian (Reset urutan jadi 1 setiap ganti hari)
+            route_df["urutan_harian"] = route_df.groupby("hari_ke").cumcount() + 1
+            
             route_df["nama_sf"] = sf
-
             hasil_list.append(route_df)
             progress.progress((i + 1) / len(sf_list))
 
         # Simpan hasil ke session state
         st.session_state.df_rute_hasil = pd.concat(hasil_list, ignore_index=True)
-        st.success("✅ Optimasi Rute (Outlet ke Outlet) Selesai!")
+        st.success("✅ Optimasi Rute (Dibagi Rata 5 Hari) Selesai!")
 
-    # --- TAMPILKAN HASIL & VISUALISASI ---=
+    # --- TAMPILKAN HASIL & VISUALISASI ---
     if st.session_state.df_rute_hasil is not None:
         df_hasil = st.session_state.df_rute_hasil
         
@@ -670,18 +675,15 @@ def page_rute():
         
         with col_f2:
             list_hari_sf = df_sf_viz["hari_ke"].unique()
-            # Opsi untuk memilih semua hari atau hari tertentu
             opsi_hari = ["Semua Hari"] + list(list_hari_sf)
             pilih_hari = st.selectbox("📅 Pilih Hari:", opsi_hari)
 
-        # Filter berdasarkan hari
         if pilih_hari != "Semua Hari":
             df_viz = df_sf_viz[df_sf_viz["hari_ke"] == pilih_hari]
         else:
             df_viz = df_sf_viz
 
         # --- Render Map ---
-        # Center map di kantor atau rata-rata lokasi outlet
         kantor = st.session_state.kantor_coord
         if not df_viz.empty:
             center_lat = df_viz["lat_outlet"].mean()
@@ -691,7 +693,6 @@ def page_rute():
 
         m = folium.Map(location=[center_lat, center_lon], zoom_start=13)
 
-        # Marker Kantor
         folium.Marker(
             kantor,
             popup="<b>KANTOR / TITIK AWAL</b>",
@@ -700,20 +701,18 @@ def page_rute():
 
         color_map = {
             "Senin": "blue", "Selasa": "green", "Rabu": "purple", 
-            "Kamis": "orange", "Jumat": "darkred", "Sabtu": "cadetblue", "Minggu": "gray"
+            "Kamis": "orange", "Jumat": "darkred"
         }
         
-        # Loop per hari agar garis rute tidak nyambung antar hari yang berbeda
+        # Loop per hari
         for hari in df_viz["hari_ke"].unique():
             df_day = df_viz[df_viz["hari_ke"] == hari].sort_values("urutan_harian")
             
-            # Koordinat jalur: Kantor -> Outlet 1 -> Outlet 2 ...
-            # Kita visualisasikan start dari kantor untuk setiap hari agar jelas arah berangkatnya
+            # Start setiap hari selalu dari kantor
             route_coords = [kantor] + list(zip(df_day["lat_outlet"], df_day["lon_outlet"]))
             
-            line_color = color_map.get(hari, "blue") 
+            line_color = color_map.get(hari, "gray") 
             
-            # Gambar Garis Rute
             folium.PolyLine(
                 locations=route_coords,
                 color=line_color,
@@ -722,11 +721,9 @@ def page_rute():
                 tooltip=f"Rute {hari}"
             ).add_to(m)
 
-            # Gambar Marker Outlet
             for _, row in df_day.iterrows():
                 tooltip_text = f"<b>{row['nama_outlet']}</b><br>Urutan: {row['urutan_harian']}<br>Hari: {hari}"
                 
-                # Buat icon nomor urut
                 icon_html = f"""
                     <div style="
                         background-color: {line_color};
@@ -751,8 +748,6 @@ def page_rute():
 
         st_folium(m, width=None, height=500)
 
-
-
 # =====================================
 # HALAMAN UTAMA SESUAI MENU
 # =====================================
@@ -764,6 +759,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
