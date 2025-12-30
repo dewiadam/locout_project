@@ -456,6 +456,7 @@ def page_mapping():
 # =====================================
 # MENU - OPTIMASI RUTE PJP (UPDATED LOGIC)
 # =====================================
+
 # --- Helper Functions ---
 def distance_to_kantor(lat, lon, kantor_coord):
     return geodesic((lat, lon), kantor_coord).km
@@ -748,6 +749,7 @@ def page_rute():
 
         st_folium(m, width=None, height=500)
 
+
 # =====================================
 # HALAMAN UTAMA SESUAI MENU
 # =====================================
@@ -759,6 +761,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
