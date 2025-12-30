@@ -750,6 +750,8 @@ def page_rute():
 
         st_folium(m, width=None, height=500)
 
+
+
 # =====================================
 # HALAMAN UTAMA SESUAI MENU
 # =====================================
@@ -761,6 +763,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
