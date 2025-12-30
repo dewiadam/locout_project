@@ -586,7 +586,7 @@ def page_rute():
         sf_list = df["nama_sf"].unique()
 
         progress = st.progress(0)
-        list_hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+        list_hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]
 
         for i, sf in enumerate(sf_list):
             df_sf = df[df["nama_sf"] == sf].copy().reset_index(drop=True)
@@ -764,6 +764,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
