@@ -638,7 +638,7 @@ def page_rute():
 
             # --- [BARU] HITUNG JARAK ANTAR OUTLET (A ke B) ---
             # 1. Pastikan data terurut berdasarkan hari dan urutan kunjungan
-            route_df = route_df.sort_values(by=["hari_ke", "urutan_harian"])
+            route_df = route_df.sort_values(by=["hari_ke", "urutan_kunjungan"])
 
             # 2. Ambil koordinat outlet sebelumnya dalam grup hari yang sama
             route_df["prev_lat"] = route_df.groupby("hari_ke")["lat_outlet"].shift(1)
@@ -789,6 +789,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
