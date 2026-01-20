@@ -453,9 +453,6 @@ def page_mapping():
 # =====================================
 # MENU - OPTIMASI RUTE PJP (UPDATED LOGIC)
 # =====================================
-# =====================================
-# MENU - OPTIMASI RUTE PJP (UPDATED LOGIC)
-# =====================================
 
 # --- Helper Functions ---
 def distance_to_kantor(lat, lon, kantor_coord):
@@ -636,33 +633,28 @@ def page_rute():
             # Hitung urutan harian (Reset urutan jadi 1 setiap ganti hari)
             route_df["urutan_harian"] = route_df.groupby("hari_ke").cumcount() + 1
 
-            # --- [BARU] HITUNG JARAK ANTAR OUTLET (A ke B) ---
-            # 1. Pastikan data terurut berdasarkan hari dan urutan kunjungan
-            route_df = route_df.sort_values(by=["hari_ke", "urutan_kunjungan"])
-
-            # 2. Ambil koordinat outlet sebelumnya dalam grup hari yang sama
-            route_df["prev_lat"] = route_df.groupby("hari_ke")["lat_outlet"].shift(1)
-            route_df["prev_lon"] = route_df.groupby("hari_ke")["lon_outlet"].shift(1)
-
-            # 3. Fungsi untuk menghitung jarak (Row by Row)
-            def hitung_jarak_step(row):
-                # Koordinat outlet saat ini
-                curr_coord = (row["lat_outlet"], row["lon_outlet"])
+            # --- UPDATE: HITUNG JARAK ANTAR TITIK ---
+            # Sortir dulu biar urutan perhitungan benar sesuai Hari dan Urutan Harian
+            route_df = route_df.sort_values(by=["hari_ke", "urutan_harian"]).reset_index(drop=True)
+            
+            jarak_visit_list = []
+            
+            for idx, row in route_df.iterrows():
+                current_loc = (row["lat_outlet"], row["lon_outlet"])
                 
-                # Jika prev_lat kosong (NaN), berarti ini adalah outlet PERTAMA hari itu
-                # Maka hitung jarak dari KANTOR
-                if pd.isna(row["prev_lat"]):
-                    return geodesic(curr_coord, kantor_coord).km
+                if row["urutan_harian"] == 1:
+                    # Jika kunjungan pertama hari itu, jarak hitung dari KANTOR
+                    dist = geodesic(kantor_coord, current_loc).km
                 else:
-                    # Jika ada previous, hitung jarak dari outlet sebelumnya
-                    prev_coord = (row["prev_lat"], row["prev_lon"])
-                    return geodesic(curr_coord, prev_coord).km
-
-            # 4. Terapkan fungsi
-            route_df["jarak_antar_titik_km"] = route_df.apply(hitung_jarak_step, axis=1)
-
-            # 5. Bersihkan kolom bantuan
-            route_df = route_df.drop(columns=["prev_lat", "prev_lon"])
+                    # Jika kunjungan berikutnya, jarak hitung dari OUTLET SEBELUMNYA
+                    prev_row = route_df.iloc[idx - 1]
+                    prev_loc = (prev_row["lat_outlet"], prev_row["lon_outlet"])
+                    dist = geodesic(prev_loc, current_loc).km
+                
+                jarak_visit_list.append(dist)
+            
+            route_df["jarak_antar_titik_km"] = jarak_visit_list
+            # ----------------------------------------
             
             route_df["nama_sf"] = sf
             hasil_list.append(route_df)
@@ -789,6 +781,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
