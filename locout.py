@@ -633,20 +633,23 @@ def page_rute():
             # Hitung urutan harian (Reset urutan jadi 1 setiap ganti hari)
             route_df["urutan_harian"] = route_df.groupby("hari_ke").cumcount() + 1
 
-            # --- UPDATE: HITUNG JARAK ANTAR TITIK ---
-            # Sortir dulu biar urutan perhitungan benar sesuai Hari dan Urutan Harian
-            route_df = route_df.sort_values(by=["hari_ke", "urutan_harian"]).reset_index(drop=True)
+           # --- UPDATE FIX: HITUNG JARAK & JAGA URUTAN RAPI ---
+            # Pastikan data urut berdasarkan urutan kunjungan (1, 2, 3...) agar Excel rapi
+            route_df = route_df.sort_values(by="urutan_kunjungan").reset_index(drop=True)
             
             jarak_visit_list = []
             
             for idx, row in route_df.iterrows():
                 current_loc = (row["lat_outlet"], row["lon_outlet"])
                 
+                # Logika: Jika ini adalah kunjungan pertama di hari itu (urutan_harian = 1),
+                # maka jarak dihitung dari KANTOR.
+                # Jika bukan (urutan_harian > 1), jarak dihitung dari titik sebelumnya (idx - 1).
+                
                 if row["urutan_harian"] == 1:
-                    # Jika kunjungan pertama hari itu, jarak hitung dari KANTOR
                     dist = geodesic(kantor_coord, current_loc).km
                 else:
-                    # Jika kunjungan berikutnya, jarak hitung dari OUTLET SEBELUMNYA
+                    # Ambil lokasi dari baris sebelumnya (karena sudah urut 1,2,3...)
                     prev_row = route_df.iloc[idx - 1]
                     prev_loc = (prev_row["lat_outlet"], prev_row["lon_outlet"])
                     dist = geodesic(prev_loc, current_loc).km
@@ -654,7 +657,7 @@ def page_rute():
                 jarak_visit_list.append(dist)
             
             route_df["jarak_antar_titik_km"] = jarak_visit_list
-            # ----------------------------------------
+            # ---------------------------------------------------
             
             route_df["nama_sf"] = sf
             hasil_list.append(route_df)
@@ -781,6 +784,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
