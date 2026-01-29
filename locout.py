@@ -373,7 +373,7 @@ def page_mapping():
     
     def highlight_minor(row):
         # Memberikan warna merah pada baris jika Qty Awal < 10
-        return ['background-color: #ffcccc' if row['Qty Awal'] < 10 else '' for _ in row]
+        return ['background-color: #ffcccc' if row['Qty Awal'] < 60 else '' for _ in row]
 
     st.dataframe(
         counts_all.style.apply(highlight_minor, axis=1),
@@ -446,7 +446,7 @@ def page_mapping():
 
         st.subheader("💡 Catatan")
         if st.session_state.sf_minor:
-            st.warning(f"SF berikut memiliki kurang dari 10 outlet: **{', '.join(st.session_state.sf_minor)}**. Berdasarkan optimasi geografis, outlet mereka telah dialihkan ke SF Utama yang lokasinya paling berdekatan.")
+            st.warning(f"SF berikut memiliki kurang dari 60 outlet: **{', '.join(st.session_state.sf_minor)}**. Berdasarkan optimasi geografis, outlet mereka telah dialihkan ke SF Utama yang lokasinya paling berdekatan.")
         
         st.download_button("📩 Download Hasil Mapping", st.session_state.excel_output, file_name="territory_mapping_final.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -784,6 +784,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
