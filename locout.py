@@ -322,10 +322,11 @@ def page_coverage():
             )
 
 # =====================================
-# MENU 3 - MAPPING PJP (MODIFIED)
+# MENU 3 - MAPPING PJP (MODIFIED Threshold 60)
 # =====================================
 def page_mapping():
-    header("Re-Mapping PJP")
+    st.header("Re-Mapping PJP (Pemerataan Ketat & Geografis)")
+    st.caption("Logika: SF < 60 dihapus, total outlet dibagi rata secara matematika ke SF tersisa.")
 
     state_defaults = {
         "processed": False,
@@ -339,13 +340,13 @@ def page_mapping():
             st.session_state[k] = v
 
     uploaded_file = st.file_uploader(
-        "📂 Upload Dataset Excel (id_outlet, nama_outlet, lon_outlet, lat_outlet, nama_sf)",
+        "📂 Upload Dataset Excel",
         type=["xlsx"],
         key="mapping_upload"
     )
 
     if not uploaded_file:
-        st.info("Silakan upload file Excel terlebih dahulu.")
+        st.info("Silakan upload file Excel (id_outlet, nama_outlet, lon_outlet, lat_outlet, nama_sf).")
         return
 
     df = pd.read_excel(uploaded_file)
@@ -355,60 +356,84 @@ def page_mapping():
         st.error(f"Kolom wajib: {', '.join(required_cols)}")
         return
 
+    # --- KONFIGURASI THRESHOLD ---
+    LIMIT_OUTLET = 60
+    # -----------------------------
+
     # Analisis Data Awal
     counts_all = df["nama_sf"].value_counts().reset_index()
     counts_all.columns = ["nama_sf", "Qty Awal"]
 
-    sf_utama = counts_all[counts_all["Qty Awal"] >= 60]["nama_sf"].tolist()
-    sf_minor = counts_all[counts_all["Qty Awal"] < 60]["nama_sf"].tolist()
-
-    st.subheader("📊 Ringkasan Data Input")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Outlet", len(df))
-    c2.metric("Total SF", counts_all.shape[0])
-    c3.metric("Rata-rata Outlet / SF", round(len(df) / counts_all.shape[0], 1))
-
-    # --- PENERAPAN WARNA TABEL AWAL ---
-    st.subheader("📋 Distribusi Outlet Awal")
+    sf_utama = counts_all[counts_all["Qty Awal"] >= LIMIT_OUTLET]["nama_sf"].tolist()
+    sf_minor = counts_all[counts_all["Qty Awal"] < LIMIT_OUTLET]["nama_sf"].tolist()
     
-    def highlight_minor(row):
-        # Memberikan warna merah pada baris jika Qty Awal < 10
-        return ['background-color: #ffcccc' if row['Qty Awal'] < 60 else '' for _ in row]
-
-    st.dataframe(
-        counts_all.style.apply(highlight_minor, axis=1),
-        use_container_width=True,
-        hide_index=True
-    )
-
-    MIN_CAP = 75
     num_clusters = len(sf_utama)
 
-    avg_cap = math.ceil(len(df) / num_clusters)
+    # --- LOGIKA STRICT EQUAL DISTRIBUTION ---
+    if num_clusters > 0:
+        total_outlet = len(df)
+        avg_load = total_outlet / num_clusters
+        
+        # KUNCI PERUBAHAN DI SINI:
+        # Memaksa algoritma agar selisih antar SF maksimal hanya 1 outlet.
+        # Contoh: 100 outlet / 3 SF = 33.33 -> Min 33, Max 34.
+        # Hasilnya pasti: 33, 33, 34. Sangat rata.
+        
+        STRICT_MIN = math.floor(avg_load)
+        STRICT_MAX = math.ceil(avg_load) 
+    else:
+        st.error("Tidak ada SF yang memenuhi syarat >= 60 outlet.")
+        return
 
-    actual_min = min(MIN_CAP, avg_cap)
-    actual_max = avg_cap + 5   # buffer aman
+    st.subheader("📊 Rencana Distribusi")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Outlet", len(df))
+    c2.metric("SF Penerima (Valid)", num_clusters)
+    c3.metric("Target Rata-rata", f"{avg_load:.2f}")
+    c4.metric("Range Target", f"{STRICT_MIN} - {STRICT_MAX} Outlet")
 
+    st.dataframe(
+        counts_all.style.apply(lambda x: ['background-color: #ffcccc' if x['Qty Awal'] < LIMIT_OUTLET else '' for _ in x], axis=1),
+        use_container_width=True, hide_index=True
+    )
 
-    if st.button("⚡ Jalankan Optimasi Territory", use_container_width=True, key="run_mapping"):
-        with st.spinner("Sedang menghitung territory sales..."):
+    if st.button("⚡ Jalankan Pemerataan (Strict)", use_container_width=True, key="run_mapping_strict"):
+        with st.spinner("Sedang melakukan klasterisasi geografis yang ketat..."):
             try:
                 coords = df[["lat_outlet", "lon_outlet"]].values
-                model = KMeansConstrained(n_clusters=num_clusters,size_min=actual_min,size_max=actual_max,random_state=42)
-
+                
+                # Menggunakan KMeansConstrained dengan batas Atas/Bawah yang sangat ketat
+                # Ini memaksa algoritma mencari solusi 1 poligon yang memenuhi kuota angka tersebut
+                model = KMeansConstrained(
+                    n_clusters=num_clusters, 
+                    size_min=STRICT_MIN, 
+                    size_max=STRICT_MAX, 
+                    random_state=42 # Random state fix agar hasil konsisten
+                )
+                
                 df["cluster_label"] = model.fit_predict(coords)
 
+                # --- MAPPING NAMA SF LAMA KE CLUSTER BARU ---
+                # Tujuannya agar "SF A" tetap memegang area yang mirip dengan area lamanya
                 cluster_labels = sorted(df["cluster_label"].unique())
-                mapping = {
-                    cluster_labels[i]: sf_utama[i]
-                    for i in range(len(cluster_labels))
-                }
-                
+                cost_matrix = []
+                for label in cluster_labels:
+                    cluster_df = df[df["cluster_label"] == label]
+                    counts = cluster_df["nama_sf"].value_counts()
+                    # Menghitung overlap outlet lama vs cluster baru
+                    cost_matrix.append([-counts.get(sf, 0) for sf in sf_utama])
+
+                row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                mapping = {cluster_labels[row_ind[i]]: sf_utama[col_ind[i]] for i in range(len(row_ind))}
                 df["sf_baru"] = df["cluster_label"].map(mapping)
 
+                # --- SUMMARY ---
                 new_counts = df.groupby("sf_baru").size().reset_index(name="Qty Baru")
                 summary = counts_all.rename(columns={"nama_sf": "sf_baru"}).merge(new_counts, on="sf_baru", how="left").fillna({"Qty Baru": 0})
                 summary["Qty Baru"] = summary["Qty Baru"].astype(int)
+                
+                # Urutkan agar terlihat rapi
+                summary = summary.sort_values(by="Qty Baru", ascending=False)
 
                 st.session_state.result_df = df.copy()
                 st.session_state.summary_df = summary.copy()
@@ -420,37 +445,43 @@ def page_mapping():
                     df.drop(columns=["cluster_label"]).to_excel(writer, index=False, sheet_name="Detail Mapping")
                     summary.to_excel(writer, index=False, sheet_name="Summary SF")
                 st.session_state.excel_output = output.getvalue()
-                st.success("Optimasi territory selesai ✅")
+                
+                st.success("Pemerataan selesai! Outlet terbagi rata dengan batasan wilayah.")
+                
             except Exception as e:
-                st.error(f"Terjadi kesalahan: {e}")
+                st.error(f"Gagal melakukan optimasi: {e}")
+                st.warning("Jika error ini muncul, kemungkinan data lokasi (Lat/Lon) sangat menumpuk di satu titik sehingga sulit dibagi rata secara sempurna.")
 
     if st.session_state.processed:
         df = st.session_state.result_df
         summary = st.session_state.summary_df
 
-        st.subheader("🗺️ Visualisasi Territory")
-        fig = px.scatter_mapbox(df, lat="lat_outlet", lon="lon_outlet", color="sf_baru", hover_name="nama_outlet", zoom=8, height=520)
+        st.subheader("🗺️ Visualisasi Area (Poligon)")
+        st.info("Warna menunjukkan pembagian wilayah baru. Pastikan titik-titik dengan warna yang sama berkumpul membentuk satu area (poligon).")
+        
+        # Visualisasi Peta
+        fig = px.scatter_mapbox(df, lat="lat_outlet", lon="lon_outlet", color="sf_baru", 
+                                hover_name="nama_outlet", zoom=9, height=550,
+                                color_discrete_sequence=px.colors.qualitative.G10) # Warna kontras
         fig.update_layout(mapbox_style="open-street-map")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- PENERAPAN WARNA TABEL RINGKASAN AKHIR ---
-        st.subheader("📊 Ringkasan Akhir")
+        st.subheader("📊 Hasil Akhir (Perhatikan Kolom 'Qty Baru')")
         
-        def highlight_zero(row):
-            # Memberikan warna merah pada baris jika Qty Baru == 0
-            return ['background-color: #ffcccc' if row['Qty Baru'] == 0 else '' for _ in row]
+        def highlight_changes(row):
+            if row['Qty Baru'] == 0:
+                return ['background-color: #ffcccc'] * len(row) # Merah utk yang dihapus
+            return [''] * len(row)
 
         st.dataframe(
-            summary.style.apply(highlight_zero, axis=1),
+            summary.style.apply(highlight_changes, axis=1),
             use_container_width=True, 
             hide_index=True
         )
-
-        st.subheader("💡 Catatan")
-        if st.session_state.sf_minor:
-            st.warning(f"SF berikut memiliki kurang dari 60 outlet: **{', '.join(st.session_state.sf_minor)}**. Berdasarkan optimasi geografis, outlet mereka telah dialihkan ke SF Utama yang lokasinya paling berdekatan.")
         
-        st.download_button("📩 Download Hasil Mapping", st.session_state.excel_output, file_name="territory_mapping_final.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📩 Download Excel Hasil", st.session_state.excel_output, file_name="pjp_strict_balanced.xlsx")
+
+
 
 # =====================================
 # MENU - OPTIMASI RUTE PJP (UPDATED LOGIC)
@@ -786,6 +817,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
