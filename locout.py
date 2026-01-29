@@ -394,7 +394,8 @@ def page_mapping():
         with st.spinner("Sedang menghitung territory sales..."):
             try:
                 coords = df[["lat_outlet", "lon_outlet"]].values
-                model = KMeansConstrained(n_clusters=num_clusters, size_min=actual_min, size_max=MAX_CAP, random_state=42)
+                model = KMeansConstrained(n_clusters=num_clusters,size_min=actual_min,size_max=actual_max,random_state=42)
+
                 df["cluster_label"] = model.fit_predict(coords)
 
                 cluster_labels = sorted(df["cluster_label"].unique())
@@ -788,6 +789,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
