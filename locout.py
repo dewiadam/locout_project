@@ -381,10 +381,14 @@ def page_mapping():
         hide_index=True
     )
 
-    MIN_CAP = 75
-    MAX_CAP = 80
+    MIN_CAP = 60
     num_clusters = len(sf_utama)
-    actual_min = min(MIN_CAP, math.floor(len(df) / num_clusters))
+
+    avg_cap = math.ceil(len(df) / num_clusters)
+
+    actual_min = min(MIN_CAP, avg_cap)
+    actual_max = avg_cap + 5   # buffer aman
+
 
     if st.button("⚡ Jalankan Optimasi Territory", use_container_width=True, key="run_mapping"):
         with st.spinner("Sedang menghitung territory sales..."):
@@ -784,6 +788,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
