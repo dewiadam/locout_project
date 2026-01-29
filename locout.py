@@ -326,7 +326,7 @@ def page_coverage():
 # =====================================
 def page_mapping():
     header("Remapping PJP")
-    st.caption("Logika: SF < 60 dihapus, total outlet dibagi rata secara matematika ke SF tersisa.")
+    st.caption("Logika: SF < 60 dihapus, total outlet dibagi rata ke SF tersisa.")
 
     state_defaults = {
         "processed": False,
@@ -817,6 +817,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
