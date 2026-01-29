@@ -399,14 +399,11 @@ def page_mapping():
                 df["cluster_label"] = model.fit_predict(coords)
 
                 cluster_labels = sorted(df["cluster_label"].unique())
-                cost_matrix = []
-                for label in cluster_labels:
-                    cluster_df = df[df["cluster_label"] == label]
-                    counts = cluster_df["nama_sf"].value_counts()
-                    cost_matrix.append([-counts.get(sf, 0) for sf in sf_utama])
-
-                row_ind, col_ind = linear_sum_assignment(cost_matrix)
-                mapping = {cluster_labels[row_ind[i]]: sf_utama[col_ind[i]] for i in range(len(row_ind))}
+                mapping = {
+                    cluster_labels[i]: sf_utama[i]
+                    for i in range(len(cluster_labels))
+                }
+                
                 df["sf_baru"] = df["cluster_label"].map(mapping)
 
                 new_counts = df.groupby("sf_baru").size().reset_index(name="Qty Baru")
@@ -789,6 +786,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
