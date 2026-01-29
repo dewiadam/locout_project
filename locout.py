@@ -381,7 +381,7 @@ def page_mapping():
         hide_index=True
     )
 
-    MIN_CAP = 60
+    MIN_CAP = 75
     num_clusters = len(sf_utama)
 
     avg_cap = math.ceil(len(df) / num_clusters)
@@ -789,6 +789,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
