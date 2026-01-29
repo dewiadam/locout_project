@@ -325,7 +325,7 @@ def page_coverage():
 # MENU 3 - MAPPING PJP (MODIFIED Threshold 60)
 # =====================================
 def page_mapping():
-    st.header("Re-Mapping PJP (Pemerataan Ketat & Geografis)")
+    header("Remapping PJP")
     st.caption("Logika: SF < 60 dihapus, total outlet dibagi rata secara matematika ke SF tersisa.")
 
     state_defaults = {
@@ -817,6 +817,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
