@@ -359,8 +359,8 @@ def page_mapping():
     counts_all = df["nama_sf"].value_counts().reset_index()
     counts_all.columns = ["nama_sf", "Qty Awal"]
 
-    sf_utama = counts_all[counts_all["Qty Awal"] >= 10]["nama_sf"].tolist()
-    sf_minor = counts_all[counts_all["Qty Awal"] < 10]["nama_sf"].tolist()
+    sf_utama = counts_all[counts_all["Qty Awal"] >= 60]["nama_sf"].tolist()
+    sf_minor = counts_all[counts_all["Qty Awal"] < 60]["nama_sf"].tolist()
 
     st.subheader("📊 Ringkasan Data Input")
     c1, c2, c3 = st.columns(3)
@@ -784,6 +784,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
