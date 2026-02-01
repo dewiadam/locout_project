@@ -258,7 +258,7 @@ def page_coverage():
 
     site_file = st.file_uploader("📂 Upload file Site (Excel)", type=["xlsx"])
     outlet_file = st.file_uploader("📂 Upload file Outlet (Excel)", type=["xlsx"])
-    radius_options = {"1 km": 1.0, "500 meter": 0.5}
+    radius_options = {"2 km" : 2.0, "1 km": 1.0, "500 meter": 0.5}
     radius_label = st.selectbox("🎯 Pilih Radius Coverage:", list(radius_options.keys()))
     selected_radius = radius_options[radius_label]
 
@@ -817,6 +817,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
