@@ -302,19 +302,23 @@ def page_coverage():
                 })
 
             summary_df = pd.DataFrame(summary)
-            # --- SPLIT id_outlet_tercover MENJADI BANYAK KOLOM ---
-            outlet_split = summary_df["id_outlet_tercover"].str.split(", ", expand=True)
-            
-            # rename kolom agar rapi
-            outlet_split.columns = [f"id_outlet_{i+1}" for i in range(outlet_split.shape[1])]
-            
-            # gabungkan kembali ke summary_df
-            summary_df = pd.concat(
-                [summary_df.drop(columns=["id_outlet_tercover"]), outlet_split],
-                axis=1
-            )
-
             detail_df = pd.DataFrame(detail_rows)
+
+            # ==============================
+            # EXPLODE id_outlet_tercover -> 1 baris per outlet
+            # ==============================
+            site_outlet_df = summary_df[["id_site", "id_outlet_tercover"]].copy()
+            
+            site_outlet_df["id_outlet_tercover"] = (
+                site_outlet_df["id_outlet_tercover"]
+                .str.split(", ")
+            )
+            
+            site_outlet_df = site_outlet_df.explode("id_outlet_tercover")
+            st.subheader("🔗 Mapping Site - Outlet (Exploded)")
+            st.dataframe(site_outlet_df)
+
+
 
             st.subheader("📊 Summary Coverage")
             st.dataframe(summary_df)
@@ -325,6 +329,7 @@ def page_coverage():
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 summary_df.to_excel(writer, index=False, sheet_name="Summary")
                 detail_df.to_excel(writer, index=False, sheet_name="Detail")
+                site_outlet_df.to_excel(writer, index=False, sheet_name="Site_Outlet_Mapping")
 
             st.download_button(
                 "💾 Download Hasil (Summary + Detail)",
@@ -829,6 +834,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
