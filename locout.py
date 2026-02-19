@@ -302,6 +302,18 @@ def page_coverage():
                 })
 
             summary_df = pd.DataFrame(summary)
+            # --- SPLIT id_outlet_tercover MENJADI BANYAK KOLOM ---
+            outlet_split = summary_df["id_outlet_tercover"].str.split(", ", expand=True)
+            
+            # rename kolom agar rapi
+            outlet_split.columns = [f"id_outlet_{i+1}" for i in range(outlet_split.shape[1])]
+            
+            # gabungkan kembali ke summary_df
+            summary_df = pd.concat(
+                [summary_df.drop(columns=["id_outlet_tercover"]), outlet_split],
+                axis=1
+            )
+
             detail_df = pd.DataFrame(detail_rows)
 
             st.subheader("📊 Summary Coverage")
@@ -817,6 +829,7 @@ elif "Mapping" in menu:
     page_mapping()
 else:
     page_rute()
+
 
 
 
